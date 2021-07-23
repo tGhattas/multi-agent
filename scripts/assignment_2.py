@@ -8,13 +8,14 @@ def vacuum_cleaning(agent_id):
     #multi_move_base.move(0,1,0.5)
     x = 0
     y = 1   
-    print('cleaning (%d,%d)'%(x,y))
+    print('-'*100, agent_id, type(agent_id))
+    print('cleaning ({},{})'.format(x,y))
     result = multi_move_base.move(agent_id, x,y)
     
-    print('moving agent %d'%agent_id)
+    print('moving agent %d' % agent_id)
     x = 1
     y = 0   
-    print('cleaning (%d,%d)'%(x,y))
+    print('cleaning ({},{})'.format(x,y))
     result = multi_move_base.move(agent_id, x,y)
     
     
@@ -37,8 +38,8 @@ if __name__ == '__main__':
     exec_mode = sys.argv[1] 
     print('exec_mode:' + exec_mode)        
 
-    agent_id = sys.argv[2]
-    print('agent id:' + agent_id)        
+    agent_id = int(sys.argv[2])
+    print('agent id: %d' % agent_id)        
     if exec_mode == 'cleaning':        
         vacuum_cleaning(agent_id)
     elif exec_mode == 'inspection':
