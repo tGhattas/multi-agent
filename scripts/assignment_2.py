@@ -10,16 +10,20 @@ import math
 import sys
 import os
 import multi_move_base 
+import json
 
 from pprint import pprint
-from nav_msgs.srv import GetMap
+from nav_msgs.srv import GetMap, GetPlan
 from nav_msgs.msg import OccupancyGrid, Odometry
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from numpy import inf
 from geometry_msgs.msg import Twist, Vector3
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import String
 from tf.transformations import euler_from_quaternion
 from datetime import datetime, timedelta
+from geometry_msgs.msg import PoseStamped
+
 
 print(sys.version)
 curr_file_loc = os.path.dirname(os.path.realpath(__file__))
@@ -27,6 +31,8 @@ media_dir_path = os.path.join(curr_file_loc, "tamer_files_2")
 print(curr_file_loc)
 
 TIMEOUT = timedelta(minutes=10)
+rival_id = None
+
 
 if not os.path.exists(media_dir_path):
     os.mkdir(media_dir_path)
@@ -156,39 +162,70 @@ def generate_goals(edt, contour, level=2, levels_num=8, step_factor=10):
     tmp = np.column_stack((rows[indexes], cols[indexes]))
 
     # anotate map
-    edt_level = cv2.imread(EDT_IMG_PATH)
-    edt_level[rows, cols] = [0,172,254] # color level range in Orange
-    for ix, point in enumerate(tmp):
-        point = point[1], point[0]
-        cv2.putText(edt_level, str(ix), (int(point[0]), int(point[1])), cv2.FONT_HERSHEY_TRIPLEX, 0.7, (0,0,255), 1)
-        cv2.circle(edt_level,tuple(point),2,(0,255,0), thickness=-1)
+    # edt_level = cv2.imread(EDT_IMG_PATH)
+    # edt_level[rows, cols] = [0,172,254] # color level range in Orange
+    # for ix, point in enumerate(tmp):
+    #     point = point[1], point[0]
+    #     cv2.putText(edt_level, str(ix), (int(point[0]), int(point[1])), cv2.FONT_HERSHEY_TRIPLEX, 0.7, (0,0,255), 1)
+    #     cv2.circle(edt_level,tuple(point),2,(0,255,0), thickness=-1)
     
-    robot_location_on_map = (int((robot_location[1]-global_map_origin[1])/0.05), int((robot_location[0]-global_map_origin[0])/0.05))
-    cv2.circle(edt_level, robot_location_on_map,3,(255,0,0), thickness=-1) # mark robot in Blue
-    cv2.putText(edt_level, "R", robot_location_on_map, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 2)
-    cv2.imwrite(EDT_ANOT_IMG_PATH(level),edt_level)
+    # robot_location_on_map = (int((robot_location[1]-global_map_origin[1])/0.05), int((robot_location[0]-global_map_origin[0])/0.05))
+    # cv2.circle(edt_level, robot_location_on_map,3,(255,0,0), thickness=-1) # mark robot in Blue
+    # cv2.putText(edt_level, "R", robot_location_on_map, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 2)
+    # cv2.imwrite(EDT_ANOT_IMG_PATH(level),edt_level)
     
     return tmp
 
+def move(client, goal, degree, global_origin):
+    position = np.array([goal_x,goal_y]) * 0.05 + global_origin
+    goal = MoveBaseGoal()
+    goal.target_pose.header.frame_id = "/map"
+    goal.target_pose.header.stamp = rospy.Time.now()
+    goal.target_pose.pose.position.x = position[0]
+    goal.target_pose.pose.position.y = position[1]
+    z,w = Robot.euler_to_quaternion(degree)
+    goal.target_pose.pose.orientation.x = 0
+    goal.target_pose.pose.orientation.y = 0
+    goal.target_pose.pose.orientation.z = z
+    goal.target_pose.pose.orientation.w = w
+
+    client.send_goal(goal)
+    wait = client.wait_for_result(rospy.Duration(60))
+
 def vacuum_cleaning(agent_id):
-       
-    #multi_move_base.move(0,1,0.5)
-    x = 0
-    y = 1   
-    print('-'*100, agent_id, type(agent_id))
-    print('cleaning ({},{})'.format(x,y))
-    result = multi_move_base.move(agent_id, x,y)
-    
-    print('moving agent %d' % agent_id)
-    x = 1
-    y = 0   
-    print('cleaning ({},{})'.format(x,y))
-    result = multi_move_base.move(agent_id, x,y)
-    
-    
-    #multi_move_base.move(1,2,0.5)
-    #multi_move_base.move(x,y)
-    #raise NotImplementedError
+    global rival_id
+    rival_id = 1-agent_id
+    dirt_message = rospy.wait_for_message('dirt', String)
+    try:
+        dirt_list = json.loads(dirt_message.data)
+    except:
+        print(dirt_list)
+    print("Recieved dirt list: {}".format(dirt_list))
+
+    try:
+
+        #multi_move_base.move(0,1,0.5)
+        agent_1_gs = dirt_list[:1]
+        for g in agent_1_gs:
+            x, y = g
+            print('-'*100, agent_id, type(agent_id))
+            print('cleaning ({},{})'.format(x,y))
+            result = multi_move_base.move(agent_id, x,y)
+        
+        # agent_2_gs = dirt_list[-2:]
+        # for g in agent_2_gs:
+        #     x, y = g
+        #     print('moving agent %d' % agent_id)
+        #     print('cleaning ({},{})'.format(x,y))
+        #     result = multi_move_base.move(rival_id, x,y)
+        
+        # rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 10)
+        # rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
+        # print('rrr', rival_goal)
+
+
+    except rospy.exceptions.ROSException:
+        pass
 
 def inspection():
     print('start inspection')

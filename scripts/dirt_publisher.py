@@ -33,7 +33,7 @@ class DirtPublisher:
           while not rospy.is_shutdown():
               
             print('\ncurrent status: agent_0 collected %d and agent_1 collected %d remaining dirt:'%(self.collected_per_agent[0], self.collected_per_agent[1]))   
-            print(self.dirt_pieces)
+            print(self.dirt_pieces, type(self.dirt_pieces))
             self.publish_objects()
             if len(self.dirt_pieces)==0:
                 print('all dirt collected. exiting')
@@ -44,7 +44,7 @@ class DirtPublisher:
 
     def publish_objects(self):            
             
-        self.dirt_pub.publish(self.dirt_pieces)
+        self.dirt_pub.publish(str(self.dirt_pieces))
 
     def update_dirt_status(self,msg):  
 
