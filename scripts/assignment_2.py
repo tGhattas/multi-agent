@@ -153,14 +153,14 @@ def euler_to_quaternion(yaw):
         z = np.sin(yaw/2) 
         return (z, w)
 
-def subcribe_location(id=0):
-    return rospy.Subscribe('tb3_{}/odom'.format(id), Odometry, callback_odom)
+def subcribe_location(agen_id=0):
+    rospy.Subscriber('tb3_{}/odom'.format(agen_id), Odometry, callback_odom)
 
 #############################  aux - end
 
 #############################  C & C
 
-def sorted_dirts(dirt_list):
+def sort_dirts(dirt_list):
     global robot_location, global_map_origin, EDT_ANOT_IMG_PATH, EDT_IMG_PATH
     while robot_location is None:
         print("waiting for location")
@@ -199,7 +199,7 @@ def move(client, goal, degree, global_origin):
     wait = client.wait_for_result(rospy.Duration(60))
 
 def basic_cleaning(dirts_list, agent_id=0):
-    sorted_dirts = sorted_dirts(dirts_list)
+    sorted_dirts = sort_dirts(dirts_list)
     for g in sorted_dirts:
         x, y = g
         print('cleaning ({},{})'.format(x,y))
