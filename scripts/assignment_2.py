@@ -78,8 +78,8 @@ def convert_to_np(grid):
     arr = np.array(grid.data, dtype='float32').reshape(shape)
     return arr.T
     
-def get_map():
-    map_getter = rospy.ServiceProxy('static_map', GetMap)
+def get_map(agent_id=0):
+    map_getter = rospy.ServiceProxy('tb3_{}/static_map'.format(agent_id), GetMap)
     grid = map_getter().map
     grid_info = grid.info
     map_arr = convert_to_np(grid)
@@ -160,13 +160,12 @@ def subcribe_location(id=0):
 
 #############################  C & C
 
-def generate_goals(edt, contour, level=2, levels_num=8, step_factor=10):
+def sorted_dirts(dirt_list):
     global robot_location, global_map_origin, EDT_ANOT_IMG_PATH, EDT_IMG_PATH
     while robot_location is None:
         print("waiting for location")
         time.sleep(1)
-    indexes = sorted(indexes, key=lambda i: distance_compute(np.array([rows[i], cols[i]])*0.05 + global_map_origin, robot_location))    
-    tmp = np.column_stack((rows[indexes], cols[indexes]))
+    sorted_dirt_list = sorted(dirt_list, key=lambda _: distance_compute(np.array(_), robot_location))    
 
     # anotate map
     # edt_level = cv2.imread(EDT_IMG_PATH)
@@ -181,7 +180,7 @@ def generate_goals(edt, contour, level=2, levels_num=8, step_factor=10):
     # cv2.putText(edt_level, "R", robot_location_on_map, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 2)
     # cv2.imwrite(EDT_ANOT_IMG_PATH(level),edt_level)
     
-    return tmp
+    return sorted_dirt_list
 
 def move(client, goal, degree, global_origin):
     position = np.array([goal_x,goal_y]) * 0.05 + global_origin
@@ -199,12 +198,17 @@ def move(client, goal, degree, global_origin):
     client.send_goal(goal)
     wait = client.wait_for_result(rospy.Duration(60))
 
-def 
+def basic_cleaning(dirts_list, agent_id=0):
+    sorted_dirts = sorted_dirts(dirts_list)
+    for g in sorted_dirts:
+        x, y = g
+        print('cleaning ({},{})'.format(x,y))
+        result = multi_move_base.move(agent_id, x, y)
 
 def vacuum_cleaning(agent_id):
     global MAP_IMG_PATH, global_map, global_map_info, global_map_origin, TIMEOUT
     global rival_id
-    global_map, global_map_info, global_map_origin, grid = get_map() 
+    global_map, global_map_info, global_map_origin, grid = get_map(agent_id) 
     subcribe_location(agent_id)
     
     rival_id = 1-agent_id
@@ -216,6 +220,7 @@ def vacuum_cleaning(agent_id):
         print(e)
         print(dirt_list)
 
+    basic_cleaning(dirt_list, agent_id)
 
     try:
 
