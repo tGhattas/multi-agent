@@ -54,6 +54,8 @@ global_points = []
 positions = []
 spheres_centers = []
 
+############################# Callbacks
+
 def callback_odom(msg):
     '''
     Obtains Odometer readings and update global Variables
@@ -68,7 +70,9 @@ def callback_odom(msg):
     robot_rotation = rot
     robot_orientation = orientation
 
+############################# Callbacks - end
 
+#############################  aux
 def convert_to_np(grid):
     shape = grid.info.width, grid.info.height
     arr = np.array(grid.data, dtype='float32').reshape(shape)
@@ -149,12 +153,15 @@ def euler_to_quaternion(yaw):
         z = np.sin(yaw/2) 
         return (z, w)
 
+def subcribe_location(id=0):
+    return rospy.Subscribe('tb3_{}/odom'.format(id), Odometry, callback_odom)
+
+#############################  aux - end
+
+#############################  C & C
+
 def generate_goals(edt, contour, level=2, levels_num=8, step_factor=10):
     global robot_location, global_map_origin, EDT_ANOT_IMG_PATH, EDT_IMG_PATH
-    grid = edt.copy()
-    assert level + 1  <= levels_num
-    rows, cols = np.where((grid > 255 * level // levels_num) & (grid < 255 * (level+1) // levels_num) & (contour > 0))
-    indexes = list(range(0, len(rows), len(rows) // step_factor))
     while robot_location is None:
         print("waiting for location")
         time.sleep(1)
@@ -192,32 +199,41 @@ def move(client, goal, degree, global_origin):
     client.send_goal(goal)
     wait = client.wait_for_result(rospy.Duration(60))
 
+def 
+
 def vacuum_cleaning(agent_id):
+    global MAP_IMG_PATH, global_map, global_map_info, global_map_origin, TIMEOUT
     global rival_id
+    global_map, global_map_info, global_map_origin, grid = get_map() 
+    subcribe_location(agent_id)
+    
     rival_id = 1-agent_id
     dirt_message = rospy.wait_for_message('dirt', String)
     try:
         dirt_list = json.loads(dirt_message.data)
-    except:
+        print("Recieved dirt list: {}".format(dirt_list))
+    except Exception as e:
+        print(e)
         print(dirt_list)
-    print("Recieved dirt list: {}".format(dirt_list))
+
 
     try:
 
         #multi_move_base.move(0,1,0.5)
-        agent_1_gs = dirt_list[:1]
+        agent_1_gs = dirt_list[:3]
         for g in agent_1_gs:
             x, y = g
-            print('-'*100, agent_id, type(agent_id))
             print('cleaning ({},{})'.format(x,y))
             result = multi_move_base.move(agent_id, x,y)
         
-        # agent_2_gs = dirt_list[-2:]
-        # for g in agent_2_gs:
-        #     x, y = g
-        #     print('moving agent %d' % agent_id)
-        #     print('cleaning ({},{})'.format(x,y))
-        #     result = multi_move_base.move(rival_id, x,y)
+
+
+        agent_2_gs = dirt_list[-2:]
+        for g in agent_2_gs:
+            x, y = g
+            print('moving agent %d' % rival_id)
+            print('cleaning ({},{})'.format(x,y))
+            result = multi_move_base.move(rival_id, x,y)
         
         # rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 10)
         # rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
