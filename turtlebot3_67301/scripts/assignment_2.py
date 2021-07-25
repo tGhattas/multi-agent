@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 
 import rospy
-import sys
 import numpy as np
-import actionlib
 import time
 import cv2
 import math
@@ -12,18 +10,12 @@ import os
 import multi_move_base 
 import json
 
-from pprint import pprint
-from nav_msgs.srv import GetMap, GetPlan
-from nav_msgs.msg import OccupancyGrid, Odometry
-from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from numpy import inf
-from geometry_msgs.msg import Twist, Vector3
-from sensor_msgs.msg import LaserScan
+from nav_msgs.srv import GetMap
+from nav_msgs.msg import Odometry
+from move_base_msgs.msg import MoveBaseGoal
 from std_msgs.msg import String
 from tf.transformations import euler_from_quaternion
-from datetime import datetime, timedelta
-from geometry_msgs.msg import PoseStamped
-
+from datetime import timedelta
 
 print(sys.version)
 curr_file_loc = os.path.dirname(os.path.realpath(__file__))
@@ -229,7 +221,7 @@ def vacuum_cleaning(agent_id):
         for g in agent_1_gs:
             x, y = g
             print('cleaning ({},{})'.format(x,y))
-            result = multi_move_base.move(agent_id, x,y)
+            result = multi_move_base.move(agent_id, x, y)
         
 
 
@@ -238,7 +230,7 @@ def vacuum_cleaning(agent_id):
             x, y = g
             print('moving agent %d' % rival_id)
             print('cleaning ({},{})'.format(x,y))
-            result = multi_move_base.move(rival_id, x,y)
+            result = multi_move_base.move(rival_id, x, y)
         
         # rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 10)
         # rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
