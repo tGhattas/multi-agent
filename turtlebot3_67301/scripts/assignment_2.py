@@ -153,8 +153,8 @@ def euler_to_quaternion(yaw):
         z = np.sin(yaw/2) 
         return (z, w)
 
-def subcribe_location(agen_id=0):
-    rospy.Subscriber('tb3_{}/odom'.format(agen_id), Odometry, callback_odom)
+def subcribe_location(agent_id=0):
+    rospy.Subscriber('tb3_{}/odom'.format(agent_id), Odometry, callback_odom)
 
 def to_map_img_point(x, y):
     return int((y-global_map_origin[1])/0.05), int((x-global_map_origin[0])/0.05)
@@ -164,7 +164,7 @@ def to_map_img_point(x, y):
 
 #############################  C & C
 
-def sort_dirts(dirt_list, annotate=True):
+def sort_dirts(dirt_list, annotate=True, agent_id=0):
     global robot_location, global_map_origin, EDT_ANOT_IMG_PATH, EDT_IMG_PATH
     while robot_location is None:
         print("waiting for location")
@@ -176,17 +176,15 @@ def sort_dirts(dirt_list, annotate=True):
         edt_level = cv2.imread(EDT_IMG_PATH)
         # edt_level[rows, cols] = [0,172,254] # color level range in Orange
         for ix, point in enumerate(sorted_dirt_list):
-            point = to_map_img_point(point[0], point[1])
-            print(point,'-'*7)
+            point = to_map_img_point(*point)
             cv2.putText(edt_level, str(ix), point, cv2.FONT_HERSHEY_TRIPLEX, 0.7, (0, 0, 255), 1)
             cv2.circle(edt_level, point, 2, (0, 255, 0), thickness=-1)
         
-        # robot_location_on_map = (int((robot_location[1]-global_map_origin[1])/0.05), int((robot_location[0]-global_map_origin[0])/0.05))
         robot_location_on_map = to_map_img_point(*robot_location)
 
         cv2.circle(edt_level, robot_location_on_map, 3, (255, 0, 0), thickness=-1) # mark robot in Blue
         cv2.putText(edt_level, "R", robot_location_on_map, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-        cv2.imwrite(EDT_ANOT_IMG_PATH(0), edt_level)
+        cv2.imwrite(EDT_ANOT_IMG_PATH(agent_id), edt_level)
     
     return sorted_dirt_list
 
@@ -217,7 +215,7 @@ def multi_move(x, y, agent_id=0):
         print('skipping ({}, {})'.format(x, y))
 
 def basic_cleaning(dirts_list, agent_id=0):
-    sorted_dirts = sort_dirts(dirts_list)
+    sorted_dirts = sort_dirts(dirts_list, agent_id=agent_id)
     for g in sorted_dirts:
         x, y = g
         multi_move(x, y, agent_id)
