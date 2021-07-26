@@ -155,25 +155,26 @@ def subcribe_location(agen_id=0):
 
 #############################  C & C
 
-def sort_dirts(dirt_list):
+def sort_dirts(dirt_list, annotate=True):
     global robot_location, global_map_origin, EDT_ANOT_IMG_PATH, EDT_IMG_PATH
     while robot_location is None:
         print("waiting for location")
         time.sleep(1)
     sorted_dirt_list = sorted(dirt_list, key=lambda _: distance_compute(np.array(_), robot_location))    
 
-    # anotate map
-    # edt_level = cv2.imread(EDT_IMG_PATH)
-    # edt_level[rows, cols] = [0,172,254] # color level range in Orange
-    # for ix, point in enumerate(tmp):
-    #     point = point[1], point[0]
-    #     cv2.putText(edt_level, str(ix), (int(point[0]), int(point[1])), cv2.FONT_HERSHEY_TRIPLEX, 0.7, (0,0,255), 1)
-    #     cv2.circle(edt_level,tuple(point),2,(0,255,0), thickness=-1)
-    
-    # robot_location_on_map = (int((robot_location[1]-global_map_origin[1])/0.05), int((robot_location[0]-global_map_origin[0])/0.05))
-    # cv2.circle(edt_level, robot_location_on_map,3,(255,0,0), thickness=-1) # mark robot in Blue
-    # cv2.putText(edt_level, "R", robot_location_on_map, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 2)
-    # cv2.imwrite(EDT_ANOT_IMG_PATH(level),edt_level)
+    if annotate:
+        # anotate map
+        edt_level = cv2.imread(EDT_IMG_PATH)
+        # edt_level[rows, cols] = [0,172,254] # color level range in Orange
+        for ix, point in enumerate(sorted_dirt_list):
+            point = point[1], point[0]
+            cv2.putText(edt_level, str(ix), (int(point[0]), int(point[1])), cv2.FONT_HERSHEY_TRIPLEX, 0.7, (0, 0, 255), 1)
+            cv2.circle(edt_level, tuple(point), 2, (0, 255, 0), thickness=-1)
+        
+        robot_location_on_map = (int((robot_location[1]-global_map_origin[1])/0.05), int((robot_location[0]-global_map_origin[0])/0.05))
+        cv2.circle(edt_level, robot_location_on_map, 3, (255, 0, 0), thickness=-1) # mark robot in Blue
+        cv2.putText(edt_level, "R", robot_location_on_map, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+        cv2.imwrite(EDT_ANOT_IMG_PATH(0), edt_level)
     
     return sorted_dirt_list
 
@@ -235,7 +236,7 @@ def vacuum_cleaning(agent_id):
 
         rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 10)
         rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
-        print('rrr', rival_goal)
+        print('rrr', rival_goal_msg.pose.position)
         
         thread.join()
 
