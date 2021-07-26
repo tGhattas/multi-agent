@@ -23,7 +23,7 @@ from std_msgs.msg import String
 from tf.transformations import euler_from_quaternion
 from datetime import datetime, timedelta
 from geometry_msgs.msg import PoseStamped
-
+from threading import Thread
 
 print(sys.version)
 curr_file_loc = os.path.dirname(os.path.realpath(__file__))
@@ -46,6 +46,7 @@ EDT_IMG_PATH = os.path.join(media_dir_path, "edt_img.jpg")
 EDT_ANOT_IMG_PATH = lambda level: os.path.join(media_dir_path, "edt_img_circs_{}.jpg".format(level))
 LOCAL_SPHERES_IMG_PATH = lambda sphere_ind: os.path.join(media_dir_path, "sphere_img_{}.jpg".format(sphere_ind))
 
+cleaned_dirts = set()
 robot_location = robot_rotation = robot_orientation = None
 global_map = None
 global_map_info = None
@@ -153,14 +154,14 @@ def euler_to_quaternion(yaw):
         z = np.sin(yaw/2) 
         return (z, w)
 
-def subcribe_location(id=0):
-    return rospy.Subscribe('tb3_{}/odom'.format(id), Odometry, callback_odom)
+def subcribe_location(agen_id=0):
+    rospy.Subscriber('tb3_{}/odom'.format(agen_id), Odometry, callback_odom)
 
 #############################  aux - end
 
 #############################  C & C
 
-def sorted_dirts(dirt_list):
+def sort_dirts(dirt_list):
     global robot_location, global_map_origin, EDT_ANOT_IMG_PATH, EDT_IMG_PATH
     while robot_location is None:
         print("waiting for location")
@@ -198,12 +199,21 @@ def move(client, goal, degree, global_origin):
     client.send_goal(goal)
     wait = client.wait_for_result(rospy.Duration(60))
 
-def basic_cleaning(dirts_list, agent_id=0):
-    sorted_dirts = sorted_dirts(dirts_list)
-    for g in sorted_dirts:
-        x, y = g
+
+def multi_move(x, y, agent_id=0):
+    global cleaned_dirts
+    if (x, y) not in cleaned_dirts:
+        cleaned_dirts.add((x, y))
         print('cleaning ({},{})'.format(x,y))
         result = multi_move_base.move(agent_id, x, y)
+    else:
+        print('skipping ({}, {})'.format(x, y))
+
+def basic_cleaning(dirts_list, agent_id=0):
+    sorted_dirts = sort_dirts(dirts_list)
+    for g in sorted_dirts:
+        x, y = g
+        multi_move(x, y, agent_id)
 
 def vacuum_cleaning(agent_id):
     global MAP_IMG_PATH, global_map, global_map_info, global_map_origin, TIMEOUT
@@ -220,29 +230,21 @@ def vacuum_cleaning(agent_id):
         print(e)
         print(dirt_list)
 
-    basic_cleaning(dirt_list, agent_id)
+    basic_cleaning(dirt_list[:3], agent_id)
 
     try:
 
-        #multi_move_base.move(0,1,0.5)
-        agent_1_gs = dirt_list[:3]
-        for g in agent_1_gs:
-            x, y = g
-            print('cleaning ({},{})'.format(x,y))
-            result = multi_move_base.move(agent_id, x,y)
-        
+        agent_2_gs = dirt_list[3:]
+        # basic_cleaning(agent_2_gs, rival_id)
+        thread = Thread(target=basic_cleaning, args=(agent_2_gs, rival_id))
+        thread.start()
 
-
-        agent_2_gs = dirt_list[-2:]
-        for g in agent_2_gs:
-            x, y = g
-            print('moving agent %d' % rival_id)
-            print('cleaning ({},{})'.format(x,y))
-            result = multi_move_base.move(rival_id, x,y)
+        rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 10)
+        rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
+        print('rrr', rival_goal)
         
-        # rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 10)
-        # rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
-        # print('rrr', rival_goal)
+        thread.join()
+
 
 
     except rospy.exceptions.ROSException:
