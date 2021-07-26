@@ -108,7 +108,12 @@ def contour_to_img():
     img_grey = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
     kernel = np.ones((5,5), np.uint8)
     erosion = cv2.erode(img_grey, kernel, iterations=1)
-    contours, hierarchy = cv2.findContours(erosion, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    results = cv2.findContours(erosion, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    if len(results) > 2:
+        _, contours, hierarchy = results
+    else:
+        contours, hierarchy = results
+
     image_contour = cv2.drawContours(erosion.copy(), contours, -1, (0, 255, 0), 1)
     cv2.imwrite(CONT_IMG_PATH,image_contour)
     return image_contour
@@ -151,6 +156,10 @@ def euler_to_quaternion(yaw):
 def subcribe_location(agen_id=0):
     rospy.Subscriber('tb3_{}/odom'.format(agen_id), Odometry, callback_odom)
 
+def to_map_img_point(x, y):
+    return int((y-global_map_origin[1])/0.05), int((x-global_map_origin[0])/0.05)
+
+
 #############################  aux - end
 
 #############################  C & C
@@ -167,11 +176,14 @@ def sort_dirts(dirt_list, annotate=True):
         edt_level = cv2.imread(EDT_IMG_PATH)
         # edt_level[rows, cols] = [0,172,254] # color level range in Orange
         for ix, point in enumerate(sorted_dirt_list):
-            point = point[1], point[0]
-            cv2.putText(edt_level, str(ix), (int(point[0]), int(point[1])), cv2.FONT_HERSHEY_TRIPLEX, 0.7, (0, 0, 255), 1)
-            cv2.circle(edt_level, tuple(point), 2, (0, 255, 0), thickness=-1)
+            point = to_map_img_point(point[0], point[1])
+            print(point,'-'*7)
+            cv2.putText(edt_level, str(ix), point, cv2.FONT_HERSHEY_TRIPLEX, 0.7, (0, 0, 255), 1)
+            cv2.circle(edt_level, point, 2, (0, 255, 0), thickness=-1)
         
-        robot_location_on_map = (int((robot_location[1]-global_map_origin[1])/0.05), int((robot_location[0]-global_map_origin[0])/0.05))
+        # robot_location_on_map = (int((robot_location[1]-global_map_origin[1])/0.05), int((robot_location[0]-global_map_origin[0])/0.05))
+        robot_location_on_map = to_map_img_point(*robot_location)
+
         cv2.circle(edt_level, robot_location_on_map, 3, (255, 0, 0), thickness=-1) # mark robot in Blue
         cv2.putText(edt_level, "R", robot_location_on_map, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
         cv2.imwrite(EDT_ANOT_IMG_PATH(0), edt_level)
@@ -216,6 +228,12 @@ def vacuum_cleaning(agent_id):
     global_map, global_map_info, global_map_origin, grid = get_map(agent_id) 
     subcribe_location(agent_id)
     
+    map_img = map_to_img(global_map)
+    walls_img = walls_to_img(global_map)
+    contour_img = contour_to_img()
+    edt_img = walls_edt_img(walls_img, contour_img)
+
+
     rival_id = 1-agent_id
     dirt_message = rospy.wait_for_message('dirt', String)
     try:
