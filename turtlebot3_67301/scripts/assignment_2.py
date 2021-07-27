@@ -69,24 +69,6 @@ global_map_origin = None
 
 ############################# Callbacks
 
-def callback_laser(data):
-    '''
-    Obtains Laser readings and update global Variables
-    '''
-    global left_wall_dist, right_wall_dist, x, front_wall_dist, front_scan_range, side_scan_start_angle, side_scan_range
-
-    x = list(data.ranges)
-    for i in range(360):
-        if x[i] == inf:
-            x[i] = 7
-        if x[i] == 0:
-            x[i] = 6
-
-        # store scan data
-    left_wall_dist = min(x[side_scan_start_angle:side_scan_start_angle + side_scan_range])  # left wall distance
-    right_wall_dist = min(x[360 - side_scan_start_angle - side_scan_range:360 - side_scan_start_angle])  # right wall distance
-    front_wall_dist = min(min(x[0:int(front_scan_range / 2)], x[int(360 - front_scan_range / 2):360]))  # front wall distance
-
 def callback_odom(msg):
     '''
     Obtains Odometer readings and update global Variables
@@ -197,11 +179,11 @@ def euler_to_quaternion(yaw):
         z = np.sin(yaw/2) 
         return (z, w)
 
-def subcribe_location(agent_id=0):
-    rospy.Subscriber('tb3_{}/odom'.format(agent_id), Odometry, callback_odom)
+def subcribe_location(agent_id=0, callback=callback_odom):
+    rospy.Subscriber('tb3_{}/odom'.format(agent_id), Odometry, callback)
 
-def subcribe_laser(agent_id=0):
-    rospy.Subscriber('tb3_{}/scan'.format(agent_id), LaserScan, callback_laser)
+def subcribe_laser(agent_id=0, callback=None):
+    rospy.Subscriber('tb3_{}/scan'.format(agent_id), LaserScan, callback)
 
 def get_vel_publisher(agent_id=0):
     return rospy.Publisher('tb3_{}/cmd_vel'.format(agent_id), Twist, queue_size=10)
@@ -454,7 +436,10 @@ def vacuum_cleaning(agent_id):
 #### Class of inspection robot
 
 class Robot:
-    def __init__(self):
+
+    def __init__(self, agent_id):
+        self.id = agent_id
+        self.robot_location = None
         self.global_points = []
         self.positions = []
         self.spheres_centers = []
@@ -471,27 +456,125 @@ class Robot:
 
         self.k1 = kp + ki + kd
         self.k2 = -kp - 2 * kd
-        k3 = kp
-        global k1, k2, k3, kp, kd, ki, front_wall_dist, x, right_wall_dist, left_wall_dist
-        global distance_from_wall, robot_location_po
+        self.k3 = kp
+
+        subcribe_location(agent_id, self.callback_odom)
+        subcribe_laser(agent_id, self.callback_laser)
+        self.velocity_publisher = get_vel_publisher(agent_id)
+
+    def callback_laser(self, data):
+        '''
+        Obtains Laser readings and update global Variables
+        '''
+        self.x = list(data.ranges)
+        for i in range(360):
+            if self.x[i] == inf:
+                self.x[i] = 7
+            if self.x[i] == 0:
+                self.x[i] = 6
+
+            # store scan data
+        self.left_wall_dist = min(x[self.side_scan_start_angle:self.side_scan_start_angle + self.side_scan_range])  # left wall distance
+        self.right_wall_dist = min(x[360 - self.side_scan_start_angle - self.side_scan_range:360 - self.side_scan_start_angle])  # right wall distance
+        self.front_wall_dist = min(min(x[0:int(self.front_scan_range / 2)], x[int(360 - self.front_scan_range / 2):360]))  # front wall distance
+
+    def callback_odom(self, msg):
+        '''
+        Obtains Odometer readings and update global Variables
+        '''
+        self.robot_location_pos = msg.pose.pose
+        location = [msg.pose.pose.position.x, msg.pose.pose.position.y]
+        self.robot_location = location
+        orientation = [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
+        (roll, pitch, yaw) = euler_from_quaternion(orientation)
+        rot = [roll, pitch, yaw]
+        self.robot_rotation = rot
+        self.robot_orientation = orientation
+        
+    def local_mapper(self):
+        global global_map_origin, global_map, global_map_info, LOCAL_MAP_IMG_PATH, spheres_centers, LOCAL_SPHERES_IMG_PATH
+        local_map = rospy.wait_for_message('tb3_{}/move_base/local_costmap/costmap'.format(self.id), OccupancyGrid)
+        local_points = np.transpose(np.array(local_map.data).reshape(
+                                    (local_map.info.width, local_map.info.height)))
+        local_position = np.array([local_map.info.origin.position.x, local_map.info.origin.position.y])
+        local_map_img = map_to_img(local_points, path=LOCAL_MAP_IMG_PATH)
+
+
+        ## detect spheres
+        img = cv2.imread(LOCAL_MAP_IMG_PATH, cv2.IMREAD_COLOR)
+        grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        kernel = np.ones((5, 5), np.uint8)
+        smooth = cv2.GaussianBlur(grey, (5,5), 1.5**2)
+
+        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30, minRadius=10, maxRadius=20)
+        if circles is not None:
+            circles = np.round(circles[0, :]).astype("int")
+
+            for (x, y, r) in circles:
+                cv2.circle(img, (x, y), r, (0, 255, 0), 4)
+                cv2.circle(img, (x, y), 1, (0, 0, 255), 3)
+                center_local_position = np.array((x, y)) * 0.05 +  local_position
+                global_local_points_index = (center_local_position - global_map_origin) / 0.05
+                global_to_local_x = int(global_local_points_index[0])
+                global_to_local_y = int(global_local_points_index[1])
+            
+                if not_identical_to_other_center(global_to_local_x, global_to_local_y):
+                    print('-'*10)
+                    print(spheres_centers)
+                    print(global_to_local_x, global_to_local_y)
+                    print('-'*10)
+                    cv2.imwrite(LOCAL_SPHERES_IMG_PATH(len(spheres_centers)), img)
+                    spheres_centers.append((global_to_local_x, global_to_local_y))
+    
+    def step(self):
+        delta = self.distance_from_wall - self.right_wall_dist  # distance error #TODO
+
+        if self.dist_from_start > 1.5:
+           self.bird_left_nest = True
+        if self.bird_left_nest and self.dist_from_start <= 1.5:
+            # update dist from wall
+            self.distance_from_wall += 0.1
+            self.bird_left_nest = False
+         
+
+        # PID controller
+        PID_output = self.kp * delta + self.kd * (delta - prev_error)
+
+        # stored states
+        self.prev_error = delta
+
+        # clip PID output
+        angular_zvel = np.clip(PID_output, -1.2, 1.2)
+        linear_vel = np.clip((front_wall_dist - 0.35), -0.1, 0.4)
+
+        # log IOs
+        log = '\nagent {} distance from right wall in cm ={} / {}\n'.format(int(right_wall_dist * 100), distance_from_wall * 100)
+        log += 'agent {} distance from front wall in cm ={}\n'.format(int(front_wall_dist * 100))
+        log += 'agent {} distance from nest ={}\n'.format(dist_from_start)
+        log += 'agent {} linear_vel={} angular_vel={} \n'.format(linear_vel, angular_zvel)
+        log += ' current dist from walls threshold={} \n'.format(distance_from_wall)
+        log += ' detected spheres={} \n'.format(len(spheres_centers))
+        rospy.loginfo(log)
+
+        # publish cmd_vel
+        vel_msg = Twist(Vector3(linear_vel, 0, 0), Vector3(0, 0, angular_zvel))
+        self.velocity_publisher.publish(vel_msg)
 
 def inspection():
-    global k1, k2, k3, kp, kd, ki, front_wall_dist, x, right_wall_dist, left_wall_dist
     global distance_from_wall, robot_location_pos, global_map_origin, global_map_info, global_map
     rospy.init_node('wall_following_control')
     rospy.loginfo('start inspection')
-    velocity_publishers = {}
+    
+    agent_1 = Robot(0)
+    agent_2 = Robot(1)
+
     start_ts = datetime.now()
-    for agent_id in (0, 1):
-        subcribe_location(agent_id)
-        velocity_publishers[agent_id] = get_vel_publisher(agent_id)
-        subcribe_laser(agent_id)
     
     rate = rospy.Rate(10)  # 20hz
 
     while robot_location is None:
         time.sleep(0.01)
-    start_pos = robot_location
+    start_pos = agent_1.robot_location
 
     global_map, global_map_info, global_map_origin, grid = get_map()
     prev_error = 0
@@ -502,9 +585,9 @@ def inspection():
         if current_ts - start_ts > TIMEOUT:
             break
 
-        local_mapper()
+        agent_1.local_mapper()
 
-        dist_from_start = distance_compute(start_pos, robot_location)
+        dist_from_start = distance_compute(start_pos, agent_1.robot_location)
 
         delta = distance_from_wall - right_wall_dist  # distance error
 
@@ -537,7 +620,7 @@ def inspection():
 
         # publish cmd_vel
         vel_msg = Twist(Vector3(linear_vel, 0, 0), Vector3(0, 0, angular_zvel))
-        velocity_publisher.publish(vel_msg)
+        agent_1.velocity_publisher.publish(vel_msg)
         rate.sleep()
 
     velocity_publisher.publish(Twist(Vector3(0, 0, 0), Vector3(0, 0, 0)))
