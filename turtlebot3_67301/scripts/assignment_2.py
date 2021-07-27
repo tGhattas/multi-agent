@@ -527,6 +527,7 @@ class Robot:
                     spheres_centers.append((global_to_local_x, global_to_local_y))
     
     def step(self):
+        global spheres_centers
         delta = self.distance_from_wall - self.right_wall_dist  # distance error #TODO
 
         if self.dist_from_start > 1.5:
@@ -548,11 +549,11 @@ class Robot:
         linear_vel = np.clip((front_wall_dist - 0.35), -0.1, 0.4)
 
         # log IOs
-        log = '\nagent {} distance from right wall in cm ={} / {}\n'.format(int(right_wall_dist * 100), distance_from_wall * 100)
-        log += 'agent {} distance from front wall in cm ={}\n'.format(int(front_wall_dist * 100))
-        log += 'agent {} distance from nest ={}\n'.format(dist_from_start)
-        log += 'agent {} linear_vel={} angular_vel={} \n'.format(linear_vel, angular_zvel)
-        log += ' current dist from walls threshold={} \n'.format(distance_from_wall)
+        log = '\n agent {} distance from right wall in cm ={} / {}\n'.format(self.id, int(self.right_wall_dist * 100), self.distance_from_wall * 100)
+        log += ' agent {} distance from front wall in cm ={}\n'.format(self.id, int(self.front_wall_dist * 100))
+        log += ' agent {} distance from nest ={}\n'.format(self.id, self.dist_from_start)
+        log += ' agent {} linear_vel={} angular_vel={} \n'.format(self.id, linear_vel, angular_zvel)
+        log += ' current dist from walls threshold={} \n'.format(self.distance_from_wall)
         log += ' detected spheres={} \n'.format(len(spheres_centers))
         rospy.loginfo(log)
 
@@ -560,13 +561,16 @@ class Robot:
         vel_msg = Twist(Vector3(linear_vel, 0, 0), Vector3(0, 0, angular_zvel))
         self.velocity_publisher.publish(vel_msg)
 
+    def stop(self):
+        self.velocity_publisher.publish(Twist(Vector3(0, 0, 0), Vector3(0, 0, 0)))
+
 def inspection():
     global distance_from_wall, robot_location_pos, global_map_origin, global_map_info, global_map
     rospy.init_node('wall_following_control')
     rospy.loginfo('start inspection')
     
-    agent_1 = Robot(0)
-    agent_2 = Robot(1)
+    agent_0 = Robot(0)
+    agent_1 = Robot(1)
 
     start_ts = datetime.now()
     
@@ -585,7 +589,7 @@ def inspection():
         if current_ts - start_ts > TIMEOUT:
             break
 
-        agent_1.local_mapper()
+        agent_0.local_mapper()
 
         dist_from_start = distance_compute(start_pos, agent_1.robot_location)
 
@@ -598,33 +602,14 @@ def inspection():
             distance_from_wall += 0.1
             bird_left_nest = False
          
-
-        # PID controller
-        PID_output = kp * delta + kd * (delta - prev_error)
-
-        # stored states
-        prev_error = delta
-
-        # clip PID output
-        angular_zvel = np.clip(PID_output, -1.2, 1.2)
-        linear_vel = np.clip((front_wall_dist - 0.35), -0.1, 0.4)
-
-        # log IOs
-        log = '\n distance from right wall in cm ={} / {}\n'.format(int(right_wall_dist * 100), distance_from_wall * 100)
-        log += ' distance from front wall in cm ={}\n'.format(int(front_wall_dist * 100))
-        log += ' distance from nest ={}\n'.format(dist_from_start)
-        log += ' linear_vel={} angular_vel={} \n'.format(linear_vel, angular_zvel)
-        log += ' current dist from walls threshold={} \n'.format(distance_from_wall)
-        log += ' detected spheres={} \n'.format(len(spheres_centers))
-        rospy.loginfo(log)
-
-        # publish cmd_vel
-        vel_msg = Twist(Vector3(linear_vel, 0, 0), Vector3(0, 0, angular_zvel))
-        agent_1.velocity_publisher.publish(vel_msg)
+        agent_0.step()
+        # agent_1.step()
+        
         rate.sleep()
 
-    velocity_publisher.publish(Twist(Vector3(0, 0, 0), Vector3(0, 0, 0)))
     
+    agent_0.stop()
+    # agent_1.stop()
     print('{} spheres were found'.format(len(spheres_centers)))
     return len(spheres_centers)
 
