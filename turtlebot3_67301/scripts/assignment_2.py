@@ -46,13 +46,46 @@ robot_location = robot_rotation = robot_orientation = None
 global_map = None
 global_map_info = None
 global_map_origin = None
-global_points = []
-positions = []
-spheres_centers = []
-move_base_clients = {}
-pub_dirt_list = []
+# global_points = []
+# positions = []
+# spheres_centers = []
+# move_base_clients = {}
+# pub_dirt_list = []
+
+# x = np.zeros(360)
+# front_wall_dist = 0  # front wall distance
+# left_wall_dist = 0  # left wall distance
+# right_wall_dist = 0  # right wall distance
+
+# # PID parameters
+# kp = 4
+# kd = 450
+# ki = 0
+
+# k1 = kp + ki + kd
+# k2 = -kp - 2 * kd
+# k3 = kp
+################
+
 ############################# Callbacks
 
+def callback_laser(data):
+    '''
+    Obtains Laser readings and update global Variables
+    '''
+    global left_wall_dist, right_wall_dist, x, front_wall_dist, front_scan_range, side_scan_start_angle, side_scan_range
+
+    x = list(data.ranges)
+    for i in range(360):
+        if x[i] == inf:
+            x[i] = 7
+        if x[i] == 0:
+            x[i] = 6
+
+        # store scan data
+    left_wall_dist = min(x[side_scan_start_angle:side_scan_start_angle + side_scan_range])  # left wall distance
+    right_wall_dist = min(x[360 - side_scan_start_angle - side_scan_range:360 - side_scan_start_angle])  # right wall distance
+    front_wall_dist = min(min(x[0:int(front_scan_range / 2)], x[int(360 - front_scan_range / 2):360]))  # front wall distance
 
 def callback_odom(msg):
     '''
@@ -167,6 +200,13 @@ def euler_to_quaternion(yaw):
 def subcribe_location(agent_id=0):
     rospy.Subscriber('tb3_{}/odom'.format(agent_id), Odometry, callback_odom)
 
+def subcribe_laser(agent_id=0):
+    rospy.Subscriber('tb3_{}/scan'.format(agent_id), LaserScan, callback_laser)
+
+def get_vel_publisher(agent_id=0):
+    return rospy.Publisher('tb3_{}/cmd_vel'.format(agent_id), Twist, queue_size=10)
+
+
 def to_map_img_point(x, y):
     return int((y-global_map_origin[1])/0.05), int((x-global_map_origin[0])/0.05)
 
@@ -241,7 +281,7 @@ def dirt_ETAs(agent_id):
         closer_agent = agent_id if rival_eta > agent_eta else 1-agent_id 
         res_ids.append(closer_agent)
         dirt_id_map[tuple(dirt_pos)] = closer_agent
-        dirt_eta_map[tuple(dirt_pos)] = {agent_id:agent_id, 1-agent_id:rival_eta}
+        dirt_eta_map[tuple(dirt_pos)] = {agent_id:agent_eta, 1-agent_id:rival_eta}
     return res_ids, dirt_id_map, dirt_eta_map 
 
 def closer_dirts(agent_id=0):
@@ -258,11 +298,16 @@ def closer_dirts(agent_id=0):
         map_[tuple(dirt_pos)] = closer_agent
     return res, map_
 
-def sort_dirts(dirt_list, annotate=True, agent_id=0):
+def sort_dirts(dirts, annotate=True, agent_id=0, by_path=False):
     global robot_location, global_map_origin, EDT_ANOT_IMG_PATH, EDT_IMG_PATH
     agent_loc = get_agent_loc(agent_id)
-    sorted_dirt_list = sorted(dirt_list, key=lambda _: distance_compute(np.array(_), agent_loc))    
-
+    if not by_path:
+        sorted_dirt_list = sorted(dirts, key=lambda _: distance_compute(np.array(_), agent_loc))    
+    else:
+        assert isinstance(dirts, dict), 'dirts should be a dict if by_path=True'
+        dirts_list = [(dirt, eta_dict[agent_id]) for (dirt, eta_dict) in dirts.items()]
+        sorted_dirt_list = sorted(dirts_list, key=lambda _: _[1])    
+        sorted_dirt_list = [_[0] for _ in sorted_dirt_list]
     if annotate:
         # anotate map
         edt_level = cv2.imread(EDT_IMG_PATH)
@@ -332,17 +377,22 @@ def update_dirt_list():
         raise Exception("Dirt list published in a format other than string = " % str(msg))
     
 
-def competitive_cleaning(agent_id=0):
+def competitive_cleaning(agent_id=0, path_based_dist=True):
     global pub_dirt_list
     rospy.loginfo('agent {} started COMPETITIVE cleaning'.format(agent_id))
     update_dirt_list()
     while len(pub_dirt_list):
-        sorted_dirts = sort_dirts(pub_dirt_list, agent_id=agent_id)
-        rival_sorted_dirts = sort_dirts(pub_dirt_list, agent_id=1-agent_id, annotate=False)
-        # closer_dirts_ind, closer_dirt_map = closer_dirts(agent_id)
-        closer_dirts_ind, closer_dirt_map = dirt_ETAs(agent_id)
+        if not path_based_dist:
+            sorted_dirts = sort_dirts(pub_dirt_list, agent_id=agent_id)
+            rival_sorted_dirts = sort_dirts(pub_dirt_list, agent_id=1-agent_id, annotate=False)
+            closer_dirts_ind, closer_dirt_map = closer_dirts(agent_id)
+        else:
+            closer_dirts_ind, closer_dirt_map, dirt_eta_map = dirt_ETAs(agent_id)
+            sorted_dirts = sort_dirts(dirt_eta_map, agent_id=agent_id, by_path=True)
+            rival_sorted_dirts = sort_dirts(dirt_eta_map, agent_id=1-agent_id, annotate=False, by_path=True)
+
         agent_1_stronger = sum(closer_dirts_ind) > len(pub_dirt_list) // 2
-        im_weak = True if agent_id == 0 and agent_1_stronger else False
+        # im_weak = True if agent_id == 0 and agent_1_stronger else False
         his = mine = []
         for ag_id, dirt_pos in zip(closer_dirts_ind, pub_dirt_list):
             if ag_id != agent_id:
@@ -350,7 +400,7 @@ def competitive_cleaning(agent_id=0):
             else:
                 mine.append(dirt_pos)
 
-        goals = sort_dirts(mine, annotate=False, agent_id=agent_id) + sort_dirts(his, annotate=False, agent_id=agent_id)
+        goals = mine + his # first clean more confident dirts
         for g in goals:
             rival_goal = get_rival_goal(1-agent_id)
             if rival_goal and distance_compute(g, np.array(rival_goal)) < 0.5 and closer_dirt_map[(g[0], g[1])] != agent_id:
@@ -385,29 +435,115 @@ def vacuum_cleaning(agent_id):
         time.sleep(0.1)
 
     try:
-        
-        # run rival
-        # agent_2_gs = pub_dirt_list
-        # proc = Thread(target=basic_cleaning, args=(agent_2_gs, rival_id))
-        # proc.start()
-        if agent_id:
+
+        if agent_id: #TODO
             basic_cleaning(pub_dirt_list, agent_id)
         else:
             competitive_cleaning(agent_id)
         
-        # proc.join()
 
 
 
     except rospy.exceptions.ROSException as e:
-        print('------ROSException thrown={}'.format(str(e)))
-        print('Running basic cleaning.')
+        rospy.logerr('------ROSException thrown={}'.format(str(e)))
+        rospy.info('agent {} running basic cleaning.'.format(agent_id))
         basic_cleaning(pub_dirt_list, agent_id)
 
+##############################################################################################################################
+
+#### Class of inspection robot
+
+class Robot:
+    def __init__(self):
+        self.global_points = []
+        self.positions = []
+        self.spheres_centers = []
+
+        self.x = np.zeros(360)
+        self.front_wall_dist = 0  # front wall distance
+        self.left_wall_dist = 0  # left wall distance
+        self.right_wall_dist = 0  # right wall distance
+
+        # PID parameters
+        self.kp = 4
+        self.kd = 450
+        self.ki = 0
+
+        self.k1 = kp + ki + kd
+        self.k2 = -kp - 2 * kd
+        k3 = kp
+        global k1, k2, k3, kp, kd, ki, front_wall_dist, x, right_wall_dist, left_wall_dist
+        global distance_from_wall, robot_location_po
 
 def inspection():
-    print('start inspection')
-    raise NotImplementedError
+    global k1, k2, k3, kp, kd, ki, front_wall_dist, x, right_wall_dist, left_wall_dist
+    global distance_from_wall, robot_location_pos, global_map_origin, global_map_info, global_map
+    rospy.init_node('wall_following_control')
+    rospy.loginfo('start inspection')
+    velocity_publishers = {}
+    start_ts = datetime.now()
+    for agent_id in (0, 1):
+        subcribe_location(agent_id)
+        velocity_publishers[agent_id] = get_vel_publisher(agent_id)
+        subcribe_laser(agent_id)
+    
+    rate = rospy.Rate(10)  # 20hz
+
+    while robot_location is None:
+        time.sleep(0.01)
+    start_pos = robot_location
+
+    global_map, global_map_info, global_map_origin, grid = get_map()
+    prev_error = 0
+    bird_left_nest = False
+
+    while distance_from_wall < 1.5:
+        current_ts = datetime.now()
+        if current_ts - start_ts > TIMEOUT:
+            break
+
+        local_mapper()
+
+        dist_from_start = distance_compute(start_pos, robot_location)
+
+        delta = distance_from_wall - right_wall_dist  # distance error
+
+        if dist_from_start > 1.5:
+            bird_left_nest = True
+        if bird_left_nest and dist_from_start <= 1.5:
+            # update dist from wall
+            distance_from_wall += 0.1
+            bird_left_nest = False
+         
+
+        # PID controller
+        PID_output = kp * delta + kd * (delta - prev_error)
+
+        # stored states
+        prev_error = delta
+
+        # clip PID output
+        angular_zvel = np.clip(PID_output, -1.2, 1.2)
+        linear_vel = np.clip((front_wall_dist - 0.35), -0.1, 0.4)
+
+        # log IOs
+        log = '\n distance from right wall in cm ={} / {}\n'.format(int(right_wall_dist * 100), distance_from_wall * 100)
+        log += ' distance from front wall in cm ={}\n'.format(int(front_wall_dist * 100))
+        log += ' distance from nest ={}\n'.format(dist_from_start)
+        log += ' linear_vel={} angular_vel={} \n'.format(linear_vel, angular_zvel)
+        log += ' current dist from walls threshold={} \n'.format(distance_from_wall)
+        log += ' detected spheres={} \n'.format(len(spheres_centers))
+        rospy.loginfo(log)
+
+        # publish cmd_vel
+        vel_msg = Twist(Vector3(linear_vel, 0, 0), Vector3(0, 0, angular_zvel))
+        velocity_publisher.publish(vel_msg)
+        rate.sleep()
+
+    velocity_publisher.publish(Twist(Vector3(0, 0, 0), Vector3(0, 0, 0)))
+    
+    print('{} spheres were found'.format(len(spheres_centers)))
+    return len(spheres_centers)
 
 
 
