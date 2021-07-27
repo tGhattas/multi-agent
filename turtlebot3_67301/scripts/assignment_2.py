@@ -141,7 +141,7 @@ def distance_compute_(p1, p2):
     pts = [np.array([p.position.x, p.position.y, p.position.z]) for p in (p1, p2)]
     return np.linalg.norm([pts[0], pts[1]])
 
-def distance_compute(pos1,pos2,Type = 'd'):
+def distance_compute(pos1, pos2, metric='d'):
     '''
     Distance Compute between two positions
     '''
@@ -150,12 +150,14 @@ def distance_compute(pos1,pos2,Type = 'd'):
     x2 = pos2[0]
     y2 = pos2[1]
     d = ((x1-x2)**2) + ((y1-y2)**2)
-    if Type == 'd':
+    if metric == 'd':
         return math.sqrt(d)
-    if Type == 'eu':
+    if metric == 'eu':
         return d
-    if Type == 'manhattan':
+    if metric == 'manhattan':
         return abs(x1-x2)+abs(y1-y2)
+    if metric == 'path':
+        pass
 
 def euler_to_quaternion(yaw):
         w = np.cos(yaw/2)
@@ -218,8 +220,9 @@ def get_pose_stamped(seq, frame_id, stamp, x, y):
 def dirt_ETAs(agent_id):
     global pub_dirt_list
     update_dirt_list()
-    res = []
-    map_ = {}
+    res_ids = []
+    dirt_id_map = {}
+    dirt_eta_map = {}
     agent_loc = get_agent_loc(agent_id)
     rival_loc = get_agent_loc(1-agent_id)
 
@@ -236,10 +239,10 @@ def dirt_ETAs(agent_id):
         rival_eta = len(plan.poses)
         
         closer_agent = agent_id if rival_eta > agent_eta else 1-agent_id 
-        res.append(closer_agent)
-        map_[tuple(dirt_pos)] = closer_agent
-
-    return res, map_
+        res_ids.append(closer_agent)
+        dirt_id_map[tuple(dirt_pos)] = closer_agent
+        dirt_eta_map[tuple(dirt_pos)] = {agent_id:agent_id, 1-agent_id:rival_eta}
+    return res_ids, dirt_id_map, dirt_eta_map 
 
 def closer_dirts(agent_id=0):
     global pub_dirt_list
@@ -387,8 +390,10 @@ def vacuum_cleaning(agent_id):
         # agent_2_gs = pub_dirt_list
         # proc = Thread(target=basic_cleaning, args=(agent_2_gs, rival_id))
         # proc.start()
-
-        competitive_cleaning(agent_id)
+        if agent_id:
+            basic_cleaning(pub_dirt_list, agent_id)
+        else:
+            competitive_cleaning(agent_id)
         
         # proc.join()
 
