@@ -19,7 +19,7 @@ from std_msgs.msg import String
 from tf.transformations import euler_from_quaternion
 from datetime import datetime, timedelta
 from geometry_msgs.msg import PoseStamped
-from threading import Thread
+from multiprocessing import Process
 
 print(sys.version)
 curr_file_loc = os.path.dirname(os.path.realpath(__file__))
@@ -42,7 +42,6 @@ EDT_IMG_PATH = os.path.join(media_dir_path, "edt_img.jpg")
 EDT_ANOT_IMG_PATH = lambda level: os.path.join(media_dir_path, "edt_img_circs_{}.jpg".format(level))
 LOCAL_SPHERES_IMG_PATH = lambda sphere_ind: os.path.join(media_dir_path, "sphere_img_{}.jpg".format(sphere_ind))
 
-cleaned_dirts = set()
 robot_location = robot_rotation = robot_orientation = None
 global_map = None
 global_map_info = None
@@ -199,12 +198,15 @@ def closer_dirts(agent_id=0):
     global pub_dirt_list
     update_dirt_list()
     res = []
+    map_ = {}
     agent_loc = get_agent_loc(agent_id)
     rival_loc = get_agent_loc(1-agent_id)
     for dirt_pos in pub_dirt_list:
         dirt_pos_np = np.array(dirt_pos)
-        res.append(agent_id if distance_compute(dirt_pos_np, agent_loc) < distance_compute(dirt_pos_np, rival_loc) else 1-agent_id)
-    return res
+        closer_agent = agent_id if distance_compute(dirt_pos_np, agent_loc) < distance_compute(dirt_pos_np, rival_loc) else 1-agent_id
+        res.append(closer_agent)
+        map_[tuple(dirt_pos)] = closer_agent
+    return res, map_
 
 def sort_dirts(dirt_list, annotate=True, agent_id=0):
     global robot_location, global_map_origin, EDT_ANOT_IMG_PATH, EDT_IMG_PATH
@@ -230,19 +232,14 @@ def sort_dirts(dirt_list, annotate=True, agent_id=0):
 
 
 def multi_move(x, y, agent_id=0):
-    global cleaned_dirts, move_base_clients
+    global move_base_clients
     if not agent_id in move_base_clients:
         # get and cache move base client
         client = actionlib.SimpleActionClient('/tb3_%d/move_base' % agent_id, MoveBaseAction)
         client.wait_for_server()
         move_base_clients[agent_id] = client
     move_base_client = move_base_clients[agent_id]
-    if (x, y) not in cleaned_dirts:
-        cleaned_dirts.add((x, y))
-        print('cleaning ({},{})'.format(x,y))
-        move(move_base_client, (x, y), 0)
-    else:
-        print('skipping ({}, {})'.format(x, y))
+    move(move_base_client, (x, y), 0)
 
 def basic_cleaning(dirts_list, agent_id=0):
     sorted_dirts = sort_dirts(dirts_list, agent_id=agent_id)
@@ -251,13 +248,15 @@ def basic_cleaning(dirts_list, agent_id=0):
         multi_move(x, y, agent_id)
 
 def get_rival_goal(rival_id):
-    
-    rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 10)
-    rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
-    print(rival_goal_msg)
-    rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id, PoseStamped, 10)
-    # rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
-    print(rival_goal_msg)
+    try:
+        # rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 5)
+        rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id, PoseStamped, 5)
+        rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
+        print(rival_goal_msg)
+    except rospy.exceptions.ROSException as e:
+        print('setting trash as rival goal.')
+        print(e)
+        rival_goal = (-1, -1)
     return rival_goal
 
 def update_dirt_list():
@@ -268,36 +267,36 @@ def update_dirt_list():
         print("Recieved dirt list: {}".format(pub_dirt_list))
     except Exception as e:
         print(e)
+        print(msg)
         raise Exception("Dirt list published in a format other than string = " % str(msg))
     
 
 def competitive_cleaning(agent_id=0):
-    global robot_location, cleaned_dirts, pub_dirt_list, rival_id
+    global robot_location, pub_dirt_list
     update_dirt_list()
-    sorted_dirts = sort_dirts(pub_dirt_list, agent_id=agent_id)
     while len(pub_dirt_list):
-        rival_goal = get_rival_goal(rival_id)
-        rival_sorted_dirts = sort_dirts(pub_dirt_list, agent_id=rival_id, annotate=False)
-        closer_dirts_ind = closer_dirts(agent_id)
+        sorted_dirts = sort_dirts(pub_dirt_list, agent_id=agent_id)
+        rival_sorted_dirts = sort_dirts(pub_dirt_list, agent_id=1-agent_id, annotate=False)
+        closer_dirts_ind, closer_dirt_map = closer_dirts(agent_id)
         agent_1_stronger = sum(closer_dirts_ind) > len(pub_dirt_list) // 2
         im_weak = True if agent_id == 0 and agent_1_stronger else False
-        if im_weak:
-            # vandalize
-            pass
-        else:
-            # I can finish with higher utility
-            his = mine = []
-            for ag_id, dirt_pos in zip(closer_dirts_ind, pub_dirt_list):
-                if ag_id != agent_id:
-                    his.append(dirt_pos)
-                else:
-                    mine.append(dirt_pos)
-            
-            goals = sort_dirts(mine, annotate=False, agent_id=agent_id) + sort_dirts(his, annotate=False, agent_id=agent_id)
-            for g in goals:
-                x, y = g
-                multi_move(x, y, agent_id)
-        update_dirt_list()
+        his = mine = []
+        for ag_id, dirt_pos in zip(closer_dirts_ind, pub_dirt_list):
+            if ag_id != agent_id:
+                his.append(dirt_pos)
+            else:
+                mine.append(dirt_pos)
+
+        goals = sort_dirts(mine, annotate=False, agent_id=agent_id) + sort_dirts(his, annotate=False, agent_id=agent_id)
+        for g in goals:
+            rival_goal = get_rival_goal(1-agent_id)
+            if distance_compute(g, np.array(rival_goal)) < 0.2 and closer_dirt_map[g] != agent_id:
+                # skip an impossible goal
+                print('skipping impossible goal.')
+                continue
+            x, y = g
+            multi_move(x, y, agent_id)
+            update_dirt_list()
         
 
 
@@ -316,34 +315,26 @@ def vacuum_cleaning(agent_id):
     subcribe_location(agent_id)
 
     rival_id = 1-agent_id
-    pub_dirt_list = dirt_message = rospy.wait_for_message('dirt', String)
-    try:
-        dirt_list = json.loads(dirt_message.data)
-        print("Recieved dirt list: {}".format(dirt_list))
-    except Exception as e:
-        print(e)
-        raise Exception("Dirt list published in a format other than string = " % str(dirt_list))
+
+    update_dirt_list()
 
     try:
-        basic_cleaning(dirt_list[:3], agent_id)
-
-
-        agent_2_gs = dirt_list[3:]
-        # basic_cleaning(agent_2_gs, rival_id)
-        thread = Thread(target=basic_cleaning, args=(agent_2_gs, rival_id))
-        thread.start()
-
-        rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 10)
-        rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
-        print('rrr', rival_goal_msg.pose.position)
+        agent_2_gs = pub_dirt_list
         
-        thread.join()
+        # run rival
+        # proc = Process(target=basic_cleaning, args=(agent_2_gs, rival_id))
+        # proc.start()
+
+        competitive_cleaning(agent_id)
+        
+        # proc.join()
 
 
 
-    except rospy.exceptions.ROSException:
-        print('------ROSException thrown. Running basic cleaning.')
-        basic_cleaning(dirt_list, agent_id)
+    except rospy.exceptions.ROSException as e:
+        print('------ROSException thrown={}'.format(str(e)))
+        print('Running basic cleaning.')
+        basic_cleaning(pub_dirt_list, agent_id)
 
 
 def inspection():
