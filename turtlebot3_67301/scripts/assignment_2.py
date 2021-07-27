@@ -13,10 +13,12 @@ import json
 
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from nav_msgs.srv import GetMap, GetPlan
-from nav_msgs.msg import Odometry, Path
+from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from std_msgs.msg import String
 from tf.transformations import euler_from_quaternion
 from datetime import datetime, timedelta
+from geometry_msgs.msg import Twist, Vector3
+from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import PoseStamped
 from multiprocessing import Process
 from threading import Thread
@@ -26,7 +28,7 @@ curr_file_loc = os.path.dirname(os.path.realpath(__file__))
 media_dir_path = os.path.join(curr_file_loc, "tamer_files_2")
 print(curr_file_loc)
 
-TIMEOUT = timedelta(minutes=10)
+TIMEOUT = timedelta(minutes=5)
 rival_id = None
 
 
@@ -86,6 +88,13 @@ def callback_odom(msg):
 ############################# Callbacks - end
 
 #############################  aux
+
+def not_identical_to_other_center(x, y, radius=40):
+    global spheres_centers
+    for a, b in spheres_centers:
+        if math.sqrt((a-x)**2 + (b-y)**2) < radius:
+            return False
+    return True
 
 def get_agent_loc(agent_id):
     msg = rospy.wait_for_message('tb3_{}/odom'.format(agent_id), Odometry)
@@ -444,6 +453,14 @@ class Robot:
         self.positions = []
         self.spheres_centers = []
 
+        self.robot_location_pos = None
+        self.side_scan_start_angle = 20
+        self.side_scan_range = 60
+        self.front_scan_range = 16
+        self.distance_from_wall = 0.4
+        self.dist_from_start = 0
+        self.start_pos = None
+
         self.x = np.zeros(360)
         self.front_wall_dist = 0  # front wall distance
         self.left_wall_dist = 0  # left wall distance
@@ -454,9 +471,9 @@ class Robot:
         self.kd = 450
         self.ki = 0
 
-        self.k1 = kp + ki + kd
-        self.k2 = -kp - 2 * kd
-        self.k3 = kp
+        self.k1 = self.kp + self.ki + self.kd
+        self.k2 = -self.kp - 2 * self.kd
+        self.k3 = self.kp
 
         subcribe_location(agent_id, self.callback_odom)
         subcribe_laser(agent_id, self.callback_laser)
@@ -474,9 +491,9 @@ class Robot:
                 self.x[i] = 6
 
             # store scan data
-        self.left_wall_dist = min(x[self.side_scan_start_angle:self.side_scan_start_angle + self.side_scan_range])  # left wall distance
-        self.right_wall_dist = min(x[360 - self.side_scan_start_angle - self.side_scan_range:360 - self.side_scan_start_angle])  # right wall distance
-        self.front_wall_dist = min(min(x[0:int(self.front_scan_range / 2)], x[int(360 - self.front_scan_range / 2):360]))  # front wall distance
+        self.left_wall_dist = min(self.x[self.side_scan_start_angle:self.side_scan_start_angle + self.side_scan_range])  # left wall distance
+        self.right_wall_dist = min(self.x[360 - self.side_scan_start_angle - self.side_scan_range:360 - self.side_scan_start_angle])  # right wall distance
+        self.front_wall_dist = min(min(self.x[0:int(self.front_scan_range / 2)], self.x[int(360 - self.front_scan_range / 2):360]))  # front wall distance
 
     def callback_odom(self, msg):
         '''
@@ -490,7 +507,8 @@ class Robot:
         rot = [roll, pitch, yaw]
         self.robot_rotation = rot
         self.robot_orientation = orientation
-        
+        self.start_pos = robot_location
+
     def local_mapper(self):
         global global_map_origin, global_map, global_map_info, LOCAL_MAP_IMG_PATH, spheres_centers, LOCAL_SPHERES_IMG_PATH
         local_map = rospy.wait_for_message('tb3_{}/move_base/local_costmap/costmap'.format(self.id), OccupancyGrid)
@@ -530,6 +548,7 @@ class Robot:
         global spheres_centers
         delta = self.distance_from_wall - self.right_wall_dist  # distance error #TODO
 
+        self.dist_from_start = distance_compute(self.start_pos, self.robot_location)
         if self.dist_from_start > 1.5:
            self.bird_left_nest = True
         if self.bird_left_nest and self.dist_from_start <= 1.5:
@@ -539,14 +558,14 @@ class Robot:
          
 
         # PID controller
-        PID_output = self.kp * delta + self.kd * (delta - prev_error)
+        PID_output = self.kp * delta + self.kd * (delta - self.prev_error)
 
         # stored states
         self.prev_error = delta
 
         # clip PID output
         angular_zvel = np.clip(PID_output, -1.2, 1.2)
-        linear_vel = np.clip((front_wall_dist - 0.35), -0.1, 0.4)
+        linear_vel = np.clip((self.front_wall_dist - 0.35), -0.1, 0.4)
 
         # log IOs
         log = '\n agent {} distance from right wall in cm ={} / {}\n'.format(self.id, int(self.right_wall_dist * 100), self.distance_from_wall * 100)
@@ -593,7 +612,6 @@ def inspection():
 
         dist_from_start = distance_compute(start_pos, agent_1.robot_location)
 
-        delta = distance_from_wall - right_wall_dist  # distance error
 
         if dist_from_start > 1.5:
             bird_left_nest = True
@@ -604,7 +622,6 @@ def inspection():
          
         agent_0.step()
         # agent_1.step()
-        
         rate.sleep()
 
     
