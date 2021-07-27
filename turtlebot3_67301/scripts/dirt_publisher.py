@@ -43,7 +43,6 @@ class DirtPublisher:
 
 
     def publish_objects(self):            
-            
         self.dirt_pub.publish(str(self.dirt_pieces))
 
     def update_dirt_status(self,msg):  

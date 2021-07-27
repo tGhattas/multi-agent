@@ -51,8 +51,9 @@ global_points = []
 positions = []
 spheres_centers = []
 move_base_clients = {}
-
+pub_dirt_list = []
 ############################# Callbacks
+
 
 def callback_odom(msg):
     '''
@@ -71,6 +72,12 @@ def callback_odom(msg):
 ############################# Callbacks - end
 
 #############################  aux
+
+def get_agent_loc(agent_id):
+    msg = rospy.wait_for_message('tb3_{}/odom'.format(agent_id), Odometry)
+    pos = msg.pose.pose.position
+    return pos.x, pos.y
+
 def convert_to_np(grid):
     shape = grid.info.width, grid.info.height
     arr = np.array(grid.data, dtype='float32').reshape(shape)
@@ -162,35 +169,6 @@ def subcribe_location(agent_id=0):
 def to_map_img_point(x, y):
     return int((y-global_map_origin[1])/0.05), int((x-global_map_origin[0])/0.05)
 
-
-#############################  aux - end
-
-#############################  C & C
-
-def sort_dirts(dirt_list, annotate=True, agent_id=0):
-    global robot_location, global_map_origin, EDT_ANOT_IMG_PATH, EDT_IMG_PATH
-    while robot_location is None:
-        print("waiting for location")
-        time.sleep(1)
-    sorted_dirt_list = sorted(dirt_list, key=lambda _: distance_compute(np.array(_), robot_location))    
-
-    if annotate:
-        # anotate map
-        edt_level = cv2.imread(EDT_IMG_PATH)
-        # edt_level[rows, cols] = [0,172,254] # color level range in Orange
-        for ix, point in enumerate(sorted_dirt_list):
-            point = to_map_img_point(*point)
-            cv2.putText(edt_level, str(ix), point, cv2.FONT_HERSHEY_TRIPLEX, 0.7, (0, 0, 255), 1)
-            cv2.circle(edt_level, point, 2, (0, 255, 0), thickness=-1)
-        
-        robot_location_on_map = to_map_img_point(*robot_location)
-
-        cv2.circle(edt_level, robot_location_on_map, 3, (255, 0, 0), thickness=-1) # mark robot in Blue
-        cv2.putText(edt_level, "R", robot_location_on_map, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-        cv2.imwrite(EDT_ANOT_IMG_PATH(agent_id), edt_level)
-    
-    return sorted_dirt_list
-
 def move(client, goal, degree, convert_to_map_coords=False):
     global global_map_origin
     x, y = goal
@@ -212,10 +190,49 @@ def move(client, goal, degree, convert_to_map_coords=False):
     client.send_goal(goal)
     wait = client.wait_for_result(rospy.Duration(60))
 
+#############################  aux - end
+
+
+#############################  C & C
+
+def closer_dirts(agent_id=0):
+    global pub_dirt_list
+    update_dirt_list()
+    res = []
+    agent_loc = get_agent_loc(agent_id)
+    rival_loc = get_agent_loc(1-agent_id)
+    for dirt_pos in pub_dirt_list:
+        dirt_pos_np = np.array(dirt_pos)
+        res.append(agent_id if distance_compute(dirt_pos_np, agent_loc) < distance_compute(dirt_pos_np, rival_loc) else 1-agent_id)
+    return res
+
+def sort_dirts(dirt_list, annotate=True, agent_id=0):
+    global robot_location, global_map_origin, EDT_ANOT_IMG_PATH, EDT_IMG_PATH
+    agent_loc = get_agent_loc(agent_id)
+    sorted_dirt_list = sorted(dirt_list, key=lambda _: distance_compute(np.array(_), agent_loc))    
+
+    if annotate:
+        # anotate map
+        edt_level = cv2.imread(EDT_IMG_PATH)
+        # edt_level[rows, cols] = [0,172,254] # color level range in Orange
+        for ix, point in enumerate(sorted_dirt_list):
+            point = to_map_img_point(*point)
+            cv2.putText(edt_level, str(ix), point, cv2.FONT_HERSHEY_TRIPLEX, 0.7, (0, 0, 255), 1)
+            cv2.circle(edt_level, point, 2, (0, 255, 0), thickness=-1)
+        
+        robot_location_on_map = to_map_img_point(*agent_loc)
+
+        cv2.circle(edt_level, robot_location_on_map, 3, (255, 0, 0), thickness=-1) # mark robot in Blue
+        cv2.putText(edt_level, "R", robot_location_on_map, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+        cv2.imwrite(EDT_ANOT_IMG_PATH(agent_id), edt_level)
+    
+    return sorted_dirt_list
+
 
 def multi_move(x, y, agent_id=0):
     global cleaned_dirts, move_base_clients
     if not agent_id in move_base_clients:
+        # get and cache move base client
         client = actionlib.SimpleActionClient('/tb3_%d/move_base' % agent_id, MoveBaseAction)
         client.wait_for_server()
         move_base_clients[agent_id] = client
@@ -223,7 +240,6 @@ def multi_move(x, y, agent_id=0):
     if (x, y) not in cleaned_dirts:
         cleaned_dirts.add((x, y))
         print('cleaning ({},{})'.format(x,y))
-        # result = multi_move_base.move(agent_id, x, y)
         move(move_base_client, (x, y), 0)
     else:
         print('skipping ({}, {})'.format(x, y))
@@ -234,33 +250,83 @@ def basic_cleaning(dirts_list, agent_id=0):
         x, y = g
         multi_move(x, y, agent_id)
 
+def get_rival_goal(rival_id):
+    
+    rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 10)
+    rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
+    print(rival_goal_msg)
+    rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id, PoseStamped, 10)
+    # rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
+    print(rival_goal_msg)
+    return rival_goal
+
+def update_dirt_list():
+    global pub_dirt_list
+    msg = rospy.wait_for_message('dirt', String)
+    try:
+        pub_dirt_list = json.loads(msg.data)
+        print("Recieved dirt list: {}".format(pub_dirt_list))
+    except Exception as e:
+        print(e)
+        raise Exception("Dirt list published in a format other than string = " % str(msg))
+    
+
+def competitive_cleaning(agent_id=0):
+    global robot_location, cleaned_dirts, pub_dirt_list, rival_id
+    update_dirt_list()
+    sorted_dirts = sort_dirts(pub_dirt_list, agent_id=agent_id)
+    while len(pub_dirt_list):
+        rival_goal = get_rival_goal(rival_id)
+        rival_sorted_dirts = sort_dirts(pub_dirt_list, agent_id=rival_id, annotate=False)
+        closer_dirts_ind = closer_dirts(agent_id)
+        agent_1_stronger = sum(closer_dirts_ind) > len(pub_dirt_list) // 2
+        im_weak = True if agent_id == 0 and agent_1_stronger else False
+        if im_weak:
+            # vandalize
+            pass
+        else:
+            # I can finish with higher utility
+            his = mine = []
+            for ag_id, dirt_pos in zip(closer_dirts_ind, pub_dirt_list):
+                if ag_id != agent_id:
+                    his.append(dirt_pos)
+                else:
+                    mine.append(dirt_pos)
+            
+            goals = sort_dirts(mine, annotate=False, agent_id=agent_id) + sort_dirts(his, annotate=False, agent_id=agent_id)
+            for g in goals:
+                x, y = g
+                multi_move(x, y, agent_id)
+        update_dirt_list()
+        
+
+
 def vacuum_cleaning(agent_id):
     global MAP_IMG_PATH, global_map, global_map_info, global_map_origin, TIMEOUT
-    global rival_id
+    global rival_id, pub_dirt_list
 
+    rospy.init_node('vacuum_cleaning_{}'.format(agent_id))
 
-    global_map, global_map_info, global_map_origin, grid = get_map(agent_id) 
-    subcribe_location(agent_id)
-
-    
+    global_map, global_map_info, global_map_origin, grid = get_map(agent_id)     
     map_img = map_to_img(global_map)
     walls_img = walls_to_img(global_map)
     contour_img = contour_to_img()
     edt_img = walls_edt_img(walls_img, contour_img)
 
+    subcribe_location(agent_id)
 
     rival_id = 1-agent_id
-    dirt_message = rospy.wait_for_message('dirt', String)
+    pub_dirt_list = dirt_message = rospy.wait_for_message('dirt', String)
     try:
         dirt_list = json.loads(dirt_message.data)
         print("Recieved dirt list: {}".format(dirt_list))
     except Exception as e:
         print(e)
-        print(dirt_list)
-
-    basic_cleaning(dirt_list[:3], agent_id)
+        raise Exception("Dirt list published in a format other than string = " % str(dirt_list))
 
     try:
+        basic_cleaning(dirt_list[:3], agent_id)
+
 
         agent_2_gs = dirt_list[3:]
         # basic_cleaning(agent_2_gs, rival_id)
@@ -276,7 +342,9 @@ def vacuum_cleaning(agent_id):
 
 
     except rospy.exceptions.ROSException:
-        pass
+        print('------ROSException thrown. Running basic cleaning.')
+        basic_cleaning(dirt_list, agent_id)
+
 
 def inspection():
     print('start inspection')
@@ -288,7 +356,7 @@ def inspection():
 if __name__ == '__main__':
 
     # Initializes a rospy node to let the SimpleActionClient publish and subscribe
-    rospy.init_node('assignment_2')
+    # rospy.init_node('assignment_2')
 
     exec_mode = sys.argv[1] 
     print('exec_mode:' + exec_mode)        

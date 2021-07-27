@@ -33,7 +33,7 @@
    <!-- AMCL -->
    <include file="$(find turtlebot3_67301)/launch/multi_agent/amcl_tb3_multi.launch">
    <arg name="namespace" value="$(arg first_tb3)"/>
-   <!-- <arg name="initial_pos_x" value="$(arg second_tb3_x_pos)"/> -->
+   <arg name="initial_pose_x" value="$(arg second_tb3_x_pos)"/>
    </include>
 
    <!-- Move base -->
