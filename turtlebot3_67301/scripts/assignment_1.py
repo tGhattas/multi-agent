@@ -33,7 +33,7 @@ if not os.path.exists(media_dir_path):
     print("Created directory for aux files.")
 
 MAP_IMG_PATH = os.path.join(media_dir_path, "map_img.jpg")
-LOCAL_MAP_IMG_PATH = os.path.join(media_dir_path, "local_map_img.jpg")
+LOCAL_MAP_IMG_PATH = lambda aid: os.path.join(media_dir_path, "agent_{}_local_map_img.jpg" % aid)
 WALL_IMG_PATH = os.path.join(media_dir_path, "wall_img.jpg")
 CONT_IMG_PATH = os.path.join(media_dir_path, "contour_img.jpg")
 EDT_IMG_PATH = os.path.join(media_dir_path, "edt_img.jpg")
@@ -274,11 +274,11 @@ def local_mapper():
     local_points = np.transpose(np.array(local_map.data).reshape(
                                 (local_map.info.width, local_map.info.height)))
     local_position = np.array([local_map.info.origin.position.x, local_map.info.origin.position.y])
-    local_map_img = map_to_img(local_points, path=LOCAL_MAP_IMG_PATH)
+    local_map_img = map_to_img(local_points, path=LOCAL_MAP_IMG_PATH(self.id))
 
 
     ## detect spheres
-    img = cv2.imread(LOCAL_MAP_IMG_PATH, cv2.IMREAD_COLOR)
+    img = cv2.imread(LOCAL_MAP_IMG_PATH(self.id), cv2.IMREAD_COLOR)
     grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     kernel = np.ones((5, 5), np.uint8)
     smooth = cv2.GaussianBlur(grey, (5,5), 1.5**2)

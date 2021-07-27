@@ -536,6 +536,9 @@ class Robot:
     
     def step(self):
         global spheres_centers
+        
+        self.local_mapper()
+
         delta = self.distance_from_wall - self.right_wall_dist  # distance error #TODO
         self.dist_from_start = distance_compute(self.start_pos, self.robot_location)
         if self.dist_from_start > 1.5:
@@ -595,15 +598,14 @@ def inspection():
         current_ts = datetime.now()
         if current_ts - start_ts > TIMEOUT:
             break
-
-        agent_0.local_mapper()         
+       
         agent_0.step()
-        # agent_1.step()
+        agent_1.step()
         rate.sleep()
 
     
     agent_0.stop()
-    # agent_1.stop()
+    agent_1.stop()
     print('{} spheres were found'.format(len(spheres_centers)))
     return len(spheres_centers)
 
