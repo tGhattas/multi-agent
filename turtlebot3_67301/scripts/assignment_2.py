@@ -14,7 +14,6 @@ import json
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from nav_msgs.srv import GetMap
 from nav_msgs.msg import Odometry
-from move_base_msgs.msg import MoveBaseGoal
 from std_msgs.msg import String
 from tf.transformations import euler_from_quaternion
 from datetime import datetime, timedelta
@@ -247,10 +246,16 @@ def basic_cleaning(dirts_list, agent_id=0):
         x, y = g
         multi_move(x, y, agent_id)
 
+def rival_goal_callback(msg):
+    print(msg)
+
 def get_rival_goal(rival_id):
     try:
-        # rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/current_goal' % rival_id, PoseStamped, 5)
-        rival_goal_msg = rospy.wait_for_message('tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id, PoseStamped, 5)
+        # channel = 'tb3_%d/move_base/current_goal' % rival_id
+        # channel = 'tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id
+        channel = 'tb3_%d/move_base/NavfnROS/plan' % rival_id
+        rival_goal_msg = rospy.wait_for_message(channel, PoseStamped, 5)
+        rospy.Subscriber(channel, PoseStamped, rival_goal_callback) #TODO
         rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
         print(rival_goal_msg)
     except rospy.exceptions.ROSException as e:
@@ -306,6 +311,9 @@ def vacuum_cleaning(agent_id):
 
     rospy.init_node('vacuum_cleaning_{}'.format(agent_id))
 
+    # print('$'*1000)
+    # print(rospy.get_published_topics())
+    # print('$'*1000)
     global_map, global_map_info, global_map_origin, grid = get_map(agent_id)     
     map_img = map_to_img(global_map)
     walls_img = walls_to_img(global_map)
