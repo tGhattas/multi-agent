@@ -12,7 +12,7 @@ import actionlib
 import json
 
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from nav_msgs.srv import GetMap
+from nav_msgs.srv import GetMap, GetPlan
 from nav_msgs.msg import Odometry, Path
 from std_msgs.msg import String
 from tf.transformations import euler_from_quaternion
@@ -185,7 +185,6 @@ def move(client, goal, degree, convert_to_map_coords=False):
     goal.target_pose.pose.orientation.y = 0
     goal.target_pose.pose.orientation.z = z
     goal.target_pose.pose.orientation.w = w
-
     client.send_goal(goal)
     wait = client.wait_for_result(rospy.Duration(60))
 
@@ -195,26 +194,28 @@ def move(client, goal, degree, convert_to_map_coords=False):
 #############################  C & C
 
 def get_agent_plan(start, end, agent_id=0):
+    rospy.loginfo('agent {} waiting for move_base/make_plan service...'.format(agent_id))
+    rospy.wait_for_service('/tb3_%d/move_base/make_plan' % agent_id, 30)
     get_plan = rospy.ServiceProxy('/tb3_%d/move_base/make_plan' % agent_id, GetPlan)
+    rospy.loginfo('agent {} got for move_base/make_plan service.'.format(agent_id))
     plan = GetPlan()
-    plan.start = my_start
-    plan.goal = item_goal
+    plan.start = start
+    plan.goal = end
     plan.tolerance = .5
-    res = get_plan(req.start, req.goal, req.tolerance)
-    print(plan)
+    res = get_plan(plan.start, plan.goal, plan.tolerance)
     myPath = len(res.plan.poses)
     return res.plan
 
-def get_pose_stamped(seq, frame_id, stamp, x, y)
+def get_pose_stamped(seq, frame_id, stamp, x, y):
     pose = PoseStamped()
-    pose.header.seq = 0
-    pose.header.frame_id = "/tb3_%d/map"%my_id
-    pose.header.stamp = rospy.Time(0)
-    pose.pose.position.x = ourLocation[0] 
-    pose.pose.position.y = ourLocation[1]
+    pose.header.seq = seq
+    pose.header.frame_id = frame_id
+    pose.header.stamp = stamp
+    pose.pose.position.x = x
+    pose.pose.position.y = y
     return pose
 
-def faster(agent_id):
+def dirt_ETAs(agent_id):
     global pub_dirt_list
     update_dirt_list()
     res = []
@@ -222,18 +223,19 @@ def faster(agent_id):
     agent_loc = get_agent_loc(agent_id)
     rival_loc = get_agent_loc(1-agent_id)
 
-    my_start = get_pose_stamped(0, "/tb3_%d/map" % agent_id, rospy.Time(0), agent_loc[0], agent_loc[1])
-    his_start = get_pose_stamped(0, "/tb3_%d/map" % agent_id, rospy.Time(0), agent_loc[0], agent_loc[1])
+    agent_start = get_pose_stamped(0, "/tb3_%d/map" % agent_id, rospy.Time(0), agent_loc[0], agent_loc[1])
+    rival_start = get_pose_stamped(0, "/tb3_%d/map" % agent_id, rospy.Time(0), rival_loc[0], rival_loc[1])
 
     for dirt_pos in pub_dirt_list:
         goal = get_pose_stamped(0, "/tb3_%d/map" % agent_id, rospy.Time(0), dirt_pos[0], dirt_pos[1])
 
-        resp = get_agent_plan(agent_id)
-        my_eta = len(resp.plan.poses)
+        plan = get_agent_plan(agent_start, goal, agent_id)
+        agent_eta = len(plan.poses)
 
-        resp = get_agent_plan(agent_id) #TODO
-        his_eta = len(resp.plan.poses)
-
+        plan = get_agent_plan(rival_start, goal, agent_id) #TODO
+        rival_eta = len(plan.poses)
+        
+        closer_agent = agent_id if rival_eta > agent_eta else 1-agent_id 
         res.append(closer_agent)
         map_[tuple(dirt_pos)] = closer_agent
 
@@ -284,16 +286,15 @@ def multi_move(x, y, agent_id=0):
         client.wait_for_server()
         move_base_clients[agent_id] = client
     move_base_client = move_base_clients[agent_id]
+    rospy.loginfo('agent {} heading to {}'.format(agent_id, (x, y)))
     move(move_base_client, (x, y), 0)
 
 def basic_cleaning(dirts_list, agent_id=0):
+    rospy.loginfo('agent {} started BASIC cleaning'.format(agent_id))
     sorted_dirts = sort_dirts(dirts_list, agent_id=agent_id)
     for g in sorted_dirts:
         x, y = g
         multi_move(x, y, agent_id)
-
-def rival_goal_callback(msg):
-    print(msg)
 
 def get_rival_goal(rival_id):
     try:
@@ -301,23 +302,27 @@ def get_rival_goal(rival_id):
         # channel = 'tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id
         # channel = 'tb3_%d/move_base/NavfnROS/plan' % rival_id
         channel = 'tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id
-        goal_msg = rospy.wait_for_message(channel, Path, 10)
-        rival_goal_msg = rospy.wait_for_message(channel, PoseStamped, 5)
-        
-        rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
-        print(rival_goal_msg)
+        rival_goal_msg = rospy.wait_for_message(channel, Path, 10)
+        # rival_goal_msg = rospy.wait_for_message(channel, PoseStamped, 5)
+        dest = rival_goal_msg.poses[-1]
+        rival_goal = (dest.pose.position.x, dest.pose.position.y)
+        rospy.loginfo('agent {} got rival goal as {}'.format(1-rival_id, rival_goal))
+     
     except rospy.exceptions.ROSException as e:
-        print('setting trash as rival goal.')
-        print(e)
-        rival_goal = (-1, -1)
+        rospy.logerr(e)
+        rospy.logerr('agent {} setting trash rival goal.'.format(1-rival_id))
+        rival_goal = None
     return rival_goal
 
 def update_dirt_list():
     global pub_dirt_list
     msg = rospy.wait_for_message('dirt', String)
     try:
-        pub_dirt_list = json.loads(msg.data)
-        print("Recieved dirt list: {}".format(pub_dirt_list))
+        string = msg.data
+        string = string.replace('(', '[')
+        string = string.replace(')', ']')
+        pub_dirt_list = json.loads(string)
+        rospy.loginfo("Recieved dirt list: {}".format(pub_dirt_list))
     except Exception as e:
         print(e)
         print(msg)
@@ -325,12 +330,14 @@ def update_dirt_list():
     
 
 def competitive_cleaning(agent_id=0):
-    global robot_location, pub_dirt_list
+    global pub_dirt_list
+    rospy.loginfo('agent {} started COMPETITIVE cleaning'.format(agent_id))
     update_dirt_list()
     while len(pub_dirt_list):
         sorted_dirts = sort_dirts(pub_dirt_list, agent_id=agent_id)
         rival_sorted_dirts = sort_dirts(pub_dirt_list, agent_id=1-agent_id, annotate=False)
-        closer_dirts_ind, closer_dirt_map = closer_dirts(agent_id)
+        # closer_dirts_ind, closer_dirt_map = closer_dirts(agent_id)
+        closer_dirts_ind, closer_dirt_map = dirt_ETAs(agent_id)
         agent_1_stronger = sum(closer_dirts_ind) > len(pub_dirt_list) // 2
         im_weak = True if agent_id == 0 and agent_1_stronger else False
         his = mine = []
@@ -343,9 +350,9 @@ def competitive_cleaning(agent_id=0):
         goals = sort_dirts(mine, annotate=False, agent_id=agent_id) + sort_dirts(his, annotate=False, agent_id=agent_id)
         for g in goals:
             rival_goal = get_rival_goal(1-agent_id)
-            if distance_compute(g, np.array(rival_goal)) < 0.2 and closer_dirt_map[g] != agent_id:
+            if rival_goal and distance_compute(g, np.array(rival_goal)) < 0.5 and closer_dirt_map[(g[0], g[1])] != agent_id:
                 # skip an impossible goal
-                print('skipping impossible goal.')
+                rospy.loginfo('agent {} skipping impossible goal.'.format(agent_id))
                 continue
             x, y = g
             multi_move(x, y, agent_id)
@@ -357,8 +364,8 @@ def vacuum_cleaning(agent_id):
     global MAP_IMG_PATH, global_map, global_map_info, global_map_origin, TIMEOUT
     global rival_id, pub_dirt_list
 
-    # rospy.init_node('vacuum_cleaning_{}'.format(agent_id))
-
+    rospy.init_node('vacuum_cleaning_{}'.format(agent_id))
+    rospy.loginfo('agent {} started cleaning'.format(agent_id))
     
     global_map, global_map_info, global_map_origin, grid = get_map(agent_id)     
     map_img = map_to_img(global_map)
@@ -370,18 +377,20 @@ def vacuum_cleaning(agent_id):
 
     rival_id = 1-agent_id
 
-    update_dirt_list()
+    while len(pub_dirt_list) == 0:
+        update_dirt_list()
+        time.sleep(0.1)
 
     try:
-        agent_2_gs = pub_dirt_list
         
         # run rival
-        proc = Thread(target=basic_cleaning, args=(agent_2_gs, rival_id))
-        proc.start()
+        # agent_2_gs = pub_dirt_list
+        # proc = Thread(target=basic_cleaning, args=(agent_2_gs, rival_id))
+        # proc.start()
 
         competitive_cleaning(agent_id)
         
-        proc.join()
+        # proc.join()
 
 
 
@@ -401,7 +410,7 @@ def inspection():
 if __name__ == '__main__':
 
     # Initializes a rospy node to let the SimpleActionClient publish and subscribe
-    rospy.init_node('assignment_2')
+    # rospy.init_node('assignment_2')
 
     exec_mode = sys.argv[1] 
     print('exec_mode:' + exec_mode)        
