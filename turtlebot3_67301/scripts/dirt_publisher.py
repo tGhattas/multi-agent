@@ -89,7 +89,9 @@ if __name__ == '__main__':
     rospy.init_node('dirt_publisher')
     path_to_yaml=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+"/config/dirt_config.yaml"
     if not os.path.exists(path_to_yaml):
-        dirt_dict={'pieces':[(2.4,0.3),(0.5,0.2),(0,0.1)],'number_agents':2,'radius':1.0}
+        # dirt_dict={'pieces':[(2.4,0.3),(0.5,0.2),(0,0.1)],'number_agents':2,'radius':1.0}
+        dirt_dict={'pieces':[(2.4,0.3),(1, 4),(0, 0.1)],'number_agents':2,'radius':1.0}
+
         with open(path_to_yaml, 'w') as f:
             yaml.dump(dirt_dict, f)
             data=dirt_dict

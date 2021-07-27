@@ -8,8 +8,10 @@ import math
 import sys
 import os
 import multi_move_base 
+import actionlib
 import json
 
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from nav_msgs.srv import GetMap
 from nav_msgs.msg import Odometry
 from move_base_msgs.msg import MoveBaseGoal
@@ -48,6 +50,7 @@ global_map_origin = None
 global_points = []
 positions = []
 spheres_centers = []
+move_base_clients = {}
 
 ############################# Callbacks
 
@@ -188,14 +191,19 @@ def sort_dirts(dirt_list, annotate=True, agent_id=0):
     
     return sorted_dirt_list
 
-def move(client, goal, degree, global_origin):
-    position = np.array([goal_x,goal_y]) * 0.05 + global_origin
+def move(client, goal, degree, convert_to_map_coords=False):
+    global global_map_origin
+    x, y = goal
+    if convert_to_map_coords:
+        position = np.array([x, y]) * 0.05 + global_map_origin
+    else:
+        position = np.array([x, y])
     goal = MoveBaseGoal()
     goal.target_pose.header.frame_id = "/map"
     goal.target_pose.header.stamp = rospy.Time.now()
     goal.target_pose.pose.position.x = position[0]
     goal.target_pose.pose.position.y = position[1]
-    z,w = Robot.euler_to_quaternion(degree)
+    z, w = euler_to_quaternion(degree)
     goal.target_pose.pose.orientation.x = 0
     goal.target_pose.pose.orientation.y = 0
     goal.target_pose.pose.orientation.z = z
@@ -206,11 +214,17 @@ def move(client, goal, degree, global_origin):
 
 
 def multi_move(x, y, agent_id=0):
-    global cleaned_dirts
+    global cleaned_dirts, move_base_clients
+    if not agent_id in move_base_clients:
+        client = actionlib.SimpleActionClient('/tb3_%d/move_base' % agent_id, MoveBaseAction)
+        client.wait_for_server()
+        move_base_clients[agent_id] = client
+    move_base_client = move_base_clients[agent_id]
     if (x, y) not in cleaned_dirts:
         cleaned_dirts.add((x, y))
         print('cleaning ({},{})'.format(x,y))
-        result = multi_move_base.move(agent_id, x, y)
+        # result = multi_move_base.move(agent_id, x, y)
+        move(move_base_client, (x, y), 0)
     else:
         print('skipping ({}, {})'.format(x, y))
 
@@ -223,8 +237,11 @@ def basic_cleaning(dirts_list, agent_id=0):
 def vacuum_cleaning(agent_id):
     global MAP_IMG_PATH, global_map, global_map_info, global_map_origin, TIMEOUT
     global rival_id
+
+
     global_map, global_map_info, global_map_origin, grid = get_map(agent_id) 
     subcribe_location(agent_id)
+
     
     map_img = map_to_img(global_map)
     walls_img = walls_to_img(global_map)
