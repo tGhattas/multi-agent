@@ -11,6 +11,7 @@ import multi_move_base
 import actionlib
 import json
 
+from numpy import inf
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from nav_msgs.srv import GetMap, GetPlan
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
@@ -48,26 +49,12 @@ robot_location = robot_rotation = robot_orientation = None
 global_map = None
 global_map_info = None
 global_map_origin = None
-# global_points = []
-# positions = []
-# spheres_centers = []
-# move_base_clients = {}
-# pub_dirt_list = []
+global_points = []
+positions = []
+spheres_centers = []
+move_base_clients = {}
+pub_dirt_list = []
 
-# x = np.zeros(360)
-# front_wall_dist = 0  # front wall distance
-# left_wall_dist = 0  # left wall distance
-# right_wall_dist = 0  # right wall distance
-
-# # PID parameters
-# kp = 4
-# kd = 450
-# ki = 0
-
-# k1 = kp + ki + kd
-# k2 = -kp - 2 * kd
-# k3 = kp
-################
 
 ############################# Callbacks
 
@@ -460,6 +447,8 @@ class Robot:
         self.distance_from_wall = 0.4
         self.dist_from_start = 0
         self.start_pos = None
+        self.prev_error = 0
+        self.bird_left_nest = False
 
         self.x = np.zeros(360)
         self.front_wall_dist = 0  # front wall distance
@@ -507,11 +496,12 @@ class Robot:
         rot = [roll, pitch, yaw]
         self.robot_rotation = rot
         self.robot_orientation = orientation
-        self.start_pos = robot_location
+        if self.start_pos is None:
+            self.start_pos = self.robot_location
 
     def local_mapper(self):
         global global_map_origin, global_map, global_map_info, LOCAL_MAP_IMG_PATH, spheres_centers, LOCAL_SPHERES_IMG_PATH
-        local_map = rospy.wait_for_message('tb3_{}/move_base/local_costmap/costmap'.format(self.id), OccupancyGrid)
+        local_map = rospy.wait_for_message('/tb3_{}/move_base/local_costmap/costmap'.format(self.id), OccupancyGrid)
         local_points = np.transpose(np.array(local_map.data).reshape(
                                     (local_map.info.width, local_map.info.height)))
         local_position = np.array([local_map.info.origin.position.x, local_map.info.origin.position.y])
@@ -547,7 +537,6 @@ class Robot:
     def step(self):
         global spheres_centers
         delta = self.distance_from_wall - self.right_wall_dist  # distance error #TODO
-
         self.dist_from_start = distance_compute(self.start_pos, self.robot_location)
         if self.dist_from_start > 1.5:
            self.bird_left_nest = True
@@ -584,7 +573,7 @@ class Robot:
         self.velocity_publisher.publish(Twist(Vector3(0, 0, 0), Vector3(0, 0, 0)))
 
 def inspection():
-    global distance_from_wall, robot_location_pos, global_map_origin, global_map_info, global_map
+    global global_map_origin, global_map_info, global_map
     rospy.init_node('wall_following_control')
     rospy.loginfo('start inspection')
     
@@ -595,31 +584,19 @@ def inspection():
     
     rate = rospy.Rate(10)  # 20hz
 
-    while robot_location is None:
+    while agent_0.robot_location is None or agent_1.robot_location is None:
         time.sleep(0.01)
-    start_pos = agent_1.robot_location
 
     global_map, global_map_info, global_map_origin, grid = get_map()
     prev_error = 0
     bird_left_nest = False
 
-    while distance_from_wall < 1.5:
+    while agent_0.distance_from_wall < 1.5 or agent_1.distance_from_wall < 1.5:
         current_ts = datetime.now()
         if current_ts - start_ts > TIMEOUT:
             break
 
-        agent_0.local_mapper()
-
-        dist_from_start = distance_compute(start_pos, agent_1.robot_location)
-
-
-        if dist_from_start > 1.5:
-            bird_left_nest = True
-        if bird_left_nest and dist_from_start <= 1.5:
-            # update dist from wall
-            distance_from_wall += 0.1
-            bird_left_nest = False
-         
+        agent_0.local_mapper()         
         agent_0.step()
         # agent_1.step()
         rate.sleep()
@@ -641,7 +618,7 @@ if __name__ == '__main__':
     exec_mode = sys.argv[1] 
     print('exec_mode:' + exec_mode)        
 
-    agent_id = int(sys.argv[2])
+    agent_id = int(sys.argv[2]) if len(sys.argv) >= 3 else 0
     print('agent id: %d' % agent_id)        
     if exec_mode == 'cleaning':        
         vacuum_cleaning(agent_id)
