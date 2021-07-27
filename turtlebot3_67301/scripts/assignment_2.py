@@ -13,12 +13,13 @@ import json
 
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from nav_msgs.srv import GetMap
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, Path
 from std_msgs.msg import String
 from tf.transformations import euler_from_quaternion
 from datetime import datetime, timedelta
 from geometry_msgs.msg import PoseStamped
 from multiprocessing import Process
+from threading import Thread
 
 print(sys.version)
 curr_file_loc = os.path.dirname(os.path.realpath(__file__))
@@ -193,6 +194,51 @@ def move(client, goal, degree, convert_to_map_coords=False):
 
 #############################  C & C
 
+def get_agent_plan(start, end, agent_id=0):
+    get_plan = rospy.ServiceProxy('/tb3_%d/move_base/make_plan' % agent_id, GetPlan)
+    plan = GetPlan()
+    plan.start = my_start
+    plan.goal = item_goal
+    plan.tolerance = .5
+    res = get_plan(req.start, req.goal, req.tolerance)
+    print(plan)
+    myPath = len(res.plan.poses)
+    return res.plan
+
+def get_pose_stamped(seq, frame_id, stamp, x, y)
+    pose = PoseStamped()
+    pose.header.seq = 0
+    pose.header.frame_id = "/tb3_%d/map"%my_id
+    pose.header.stamp = rospy.Time(0)
+    pose.pose.position.x = ourLocation[0] 
+    pose.pose.position.y = ourLocation[1]
+    return pose
+
+def faster(agent_id):
+    global pub_dirt_list
+    update_dirt_list()
+    res = []
+    map_ = {}
+    agent_loc = get_agent_loc(agent_id)
+    rival_loc = get_agent_loc(1-agent_id)
+
+    my_start = get_pose_stamped(0, "/tb3_%d/map" % agent_id, rospy.Time(0), agent_loc[0], agent_loc[1])
+    his_start = get_pose_stamped(0, "/tb3_%d/map" % agent_id, rospy.Time(0), agent_loc[0], agent_loc[1])
+
+    for dirt_pos in pub_dirt_list:
+        goal = get_pose_stamped(0, "/tb3_%d/map" % agent_id, rospy.Time(0), dirt_pos[0], dirt_pos[1])
+
+        resp = get_agent_plan(agent_id)
+        my_eta = len(resp.plan.poses)
+
+        resp = get_agent_plan(agent_id) #TODO
+        his_eta = len(resp.plan.poses)
+
+        res.append(closer_agent)
+        map_[tuple(dirt_pos)] = closer_agent
+
+    return res, map_
+
 def closer_dirts(agent_id=0):
     global pub_dirt_list
     update_dirt_list()
@@ -253,9 +299,11 @@ def get_rival_goal(rival_id):
     try:
         # channel = 'tb3_%d/move_base/current_goal' % rival_id
         # channel = 'tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id
-        channel = 'tb3_%d/move_base/NavfnROS/plan' % rival_id
+        # channel = 'tb3_%d/move_base/NavfnROS/plan' % rival_id
+        channel = 'tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id
+        goal_msg = rospy.wait_for_message(channel, Path, 10)
         rival_goal_msg = rospy.wait_for_message(channel, PoseStamped, 5)
-        rospy.Subscriber(channel, PoseStamped, rival_goal_callback) #TODO
+        
         rival_goal = (rival_goal_msg.pose.position.x, rival_goal_msg.pose.position.y)
         print(rival_goal_msg)
     except rospy.exceptions.ROSException as e:
@@ -309,11 +357,9 @@ def vacuum_cleaning(agent_id):
     global MAP_IMG_PATH, global_map, global_map_info, global_map_origin, TIMEOUT
     global rival_id, pub_dirt_list
 
-    rospy.init_node('vacuum_cleaning_{}'.format(agent_id))
+    # rospy.init_node('vacuum_cleaning_{}'.format(agent_id))
 
-    # print('$'*1000)
-    # print(rospy.get_published_topics())
-    # print('$'*1000)
+    
     global_map, global_map_info, global_map_origin, grid = get_map(agent_id)     
     map_img = map_to_img(global_map)
     walls_img = walls_to_img(global_map)
@@ -330,12 +376,12 @@ def vacuum_cleaning(agent_id):
         agent_2_gs = pub_dirt_list
         
         # run rival
-        # proc = Process(target=basic_cleaning, args=(agent_2_gs, rival_id))
-        # proc.start()
+        proc = Thread(target=basic_cleaning, args=(agent_2_gs, rival_id))
+        proc.start()
 
         competitive_cleaning(agent_id)
         
-        # proc.join()
+        proc.join()
 
 
 
@@ -355,7 +401,7 @@ def inspection():
 if __name__ == '__main__':
 
     # Initializes a rospy node to let the SimpleActionClient publish and subscribe
-    # rospy.init_node('assignment_2')
+    rospy.init_node('assignment_2')
 
     exec_mode = sys.argv[1] 
     print('exec_mode:' + exec_mode)        
