@@ -22,7 +22,7 @@ from geometry_msgs.msg import Twist, Vector3
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import PoseStamped
 from multiprocessing import Process
-from threading import Thread
+from threading import Thread, Lock
 
 print(sys.version)
 curr_file_loc = os.path.dirname(os.path.realpath(__file__))
@@ -38,7 +38,7 @@ if not os.path.exists(media_dir_path):
     print("Created directory for aux files.")
 
 MAP_IMG_PATH = os.path.join(media_dir_path, "map_img.jpg")
-LOCAL_MAP_IMG_PATH = os.path.join(media_dir_path, "local_map_img.jpg")
+LOCAL_MAP_IMG_PATH = lambda aid: os.path.join(media_dir_path, "agent_{}_local_map_img.jpg".format(aid))
 WALL_IMG_PATH = os.path.join(media_dir_path, "wall_img.jpg")
 CONT_IMG_PATH = os.path.join(media_dir_path, "contour_img.jpg")
 EDT_IMG_PATH = os.path.join(media_dir_path, "edt_img.jpg")
@@ -52,6 +52,7 @@ global_map_origin = None
 global_points = []
 positions = []
 spheres_centers = []
+spheres_centers_list_lock = Lock()
 move_base_clients = {}
 pub_dirt_list = []
 
@@ -433,14 +434,18 @@ def vacuum_cleaning(agent_id):
 
 class Robot:
 
-    def __init__(self, agent_id):
+    def __init__(self, agent_id, reverse=False):
         self.id = agent_id
+        self.reverse = reverse
         self.robot_location = None
+        self.robot_rotation = None
+        self.robot_location_pos = None
+        self.robot_orientation = None
         self.global_points = []
         self.positions = []
         self.spheres_centers = []
+        self.rotated = False
 
-        self.robot_location_pos = None
         self.side_scan_start_angle = 20
         self.side_scan_range = 60
         self.front_scan_range = 16
@@ -460,9 +465,9 @@ class Robot:
         self.kd = 450
         self.ki = 0
 
-        self.k1 = self.kp + self.ki + self.kd
-        self.k2 = -self.kp - 2 * self.kd
-        self.k3 = self.kp
+        # self.k1 = self.kp + self.ki + self.kd
+        # self.k2 = -self.kp - 2 * self.kd
+        # self.k3 = self.kp
 
         subcribe_location(agent_id, self.callback_odom)
         subcribe_laser(agent_id, self.callback_laser)
@@ -500,16 +505,16 @@ class Robot:
             self.start_pos = self.robot_location
 
     def local_mapper(self):
-        global global_map_origin, global_map, global_map_info, LOCAL_MAP_IMG_PATH, spheres_centers, LOCAL_SPHERES_IMG_PATH
+        global global_map_origin, global_map, global_map_info, LOCAL_MAP_IMG_PATH, spheres_centers, LOCAL_SPHERES_IMG_PATH, spheres_centers_list_lock
         local_map = rospy.wait_for_message('/tb3_{}/move_base/local_costmap/costmap'.format(self.id), OccupancyGrid)
         local_points = np.transpose(np.array(local_map.data).reshape(
                                     (local_map.info.width, local_map.info.height)))
         local_position = np.array([local_map.info.origin.position.x, local_map.info.origin.position.y])
-        local_map_img = map_to_img(local_points, path=LOCAL_MAP_IMG_PATH)
+        local_map_img = map_to_img(local_points, path=LOCAL_MAP_IMG_PATH(self.id))
 
 
         ## detect spheres
-        img = cv2.imread(LOCAL_MAP_IMG_PATH, cv2.IMREAD_COLOR)
+        img = cv2.imread(LOCAL_MAP_IMG_PATH(self.id), cv2.IMREAD_COLOR)
         grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         kernel = np.ones((5, 5), np.uint8)
         smooth = cv2.GaussianBlur(grey, (5,5), 1.5**2)
@@ -525,21 +530,47 @@ class Robot:
                 global_local_points_index = (center_local_position - global_map_origin) / 0.05
                 global_to_local_x = int(global_local_points_index[0])
                 global_to_local_y = int(global_local_points_index[1])
-            
-                if not_identical_to_other_center(global_to_local_x, global_to_local_y):
-                    print('-'*10)
-                    print(spheres_centers)
-                    print(global_to_local_x, global_to_local_y)
-                    print('-'*10)
-                    cv2.imwrite(LOCAL_SPHERES_IMG_PATH(len(spheres_centers)), img)
-                    spheres_centers.append((global_to_local_x, global_to_local_y))
+
+                with spheres_centers_list_lock:
+                    if not_identical_to_other_center(global_to_local_x, global_to_local_y):
+                        log = '\n'+'-'*10
+                        log += '\n'+str(spheres_centers)
+                        log += '\n'+str((global_to_local_x, global_to_local_y))
+                        log += '\n'+'-'*10
+                        rospy.loginfo(log)
+                        spheres_centers.append((global_to_local_x, global_to_local_y))
+
+                cv2.imwrite(LOCAL_SPHERES_IMG_PATH(len(spheres_centers)), img)
     
+    def rotate(self, target):
+        while not rospy.is_shutdown():
+            while self.robot_rotation is None:
+                rospy.loginfo('agent {} waiting for rotation.'.format(self.id))
+                time.sleep(0.1)
+            yaw = self.robot_rotation[-1]
+            rot_cmd = Twist()
+            rot_cmd.angular.z = self.kp * (target-yaw)
+            if abs(rot_cmd.angular.z) < 0.1:
+                self.stop()
+                break
+            self.velocity_publisher(rot_cmd)
+            rospy.Rate(10).sleep()
+
     def step(self):
         global spheres_centers
         
         self.local_mapper()
 
-        delta = self.distance_from_wall - self.right_wall_dist  # distance error #TODO
+        if self.reverse:
+            if not self.rotated:
+                # rotate
+                target = math.pi / 2
+                self.rotate(target)
+                self.rotated = True
+
+            delta = self.distance_from_wall - self.left_wall_dist  # distance error
+        else:
+            delta = self.distance_from_wall - self.right_wall_dist  # distance error
         self.dist_from_start = distance_compute(self.start_pos, self.robot_location)
         if self.dist_from_start > 1.5:
            self.bird_left_nest = True
@@ -559,6 +590,7 @@ class Robot:
         angular_zvel = np.clip(PID_output, -1.2, 1.2)
         linear_vel = np.clip((self.front_wall_dist - 0.35), -0.1, 0.4)
 
+
         # log IOs
         log = '\n agent {} distance from right wall in cm ={} / {}\n'.format(self.id, int(self.right_wall_dist * 100), self.distance_from_wall * 100)
         log += ' agent {} distance from front wall in cm ={}\n'.format(self.id, int(self.front_wall_dist * 100))
@@ -575,15 +607,31 @@ class Robot:
     def stop(self):
         self.velocity_publisher.publish(Twist(Vector3(0, 0, 0), Vector3(0, 0, 0)))
 
+def thread_step(agent, start_ts=datetime.now()):
+    rate = rospy.Rate(10)  # 20hz
+    try:
+        while agent.distance_from_wall < 1.5:
+            current_ts = datetime.now()
+            if current_ts - start_ts > TIMEOUT:
+                break
+            agent.step()
+            rate.sleep()
+    except Exception as e:
+        rospy.logerr('agent {} exception raised:{}'.format(agent.id, str(e)))
+        raise e
+    finally:
+        agent.stop()
+        
+
 def inspection():
     global global_map_origin, global_map_info, global_map
     rospy.init_node('wall_following_control')
     rospy.loginfo('start inspection')
     
     agent_0 = Robot(0)
-    agent_1 = Robot(1)
+    agent_1 = Robot(1, reverse=True)
 
-    start_ts = datetime.now()
+    # start_ts = datetime.now()
     
     rate = rospy.Rate(10)  # 20hz
 
@@ -594,20 +642,31 @@ def inspection():
     prev_error = 0
     bird_left_nest = False
 
-    while agent_0.distance_from_wall < 1.5 or agent_1.distance_from_wall < 1.5:
-        current_ts = datetime.now()
-        if current_ts - start_ts > TIMEOUT:
-            break
-       
-        agent_0.step()
-        agent_1.step()
-        rate.sleep()
+    try:
+        # while agent_0.distance_from_wall < 1.5 or agent_1.distance_from_wall < 1.5:
+        #     current_ts = datetime.now()
+        #     if current_ts - start_ts > TIMEOUT:
+        #         break
 
-    
-    agent_0.stop()
-    agent_1.stop()
-    print('{} spheres were found'.format(len(spheres_centers)))
-    return len(spheres_centers)
+        #     agent_0.step()
+        #     agent_1.step()
+        #     rate.sleep()
+
+        # agent_0.stop()
+        # agent_1.stop()
+        
+        agent_t0 = Thread(target=thread_step, args=(agent_0,))
+        agent_t1 = Thread(target=thread_step, args=(agent_1,))
+
+        agent_t0.start()
+        agent_t1.start()
+
+        agent_t0.join()
+        agent_t1.join()
+
+    finally:
+        rospy.loginfo("{} spheres were found.".format(len(spheres_centers)))
+        return len(spheres_centers)
 
 
 
