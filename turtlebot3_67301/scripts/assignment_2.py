@@ -549,11 +549,13 @@ class Robot:
                 time.sleep(0.1)
             yaw = self.robot_rotation[-1]
             rot_cmd = Twist()
-            rot_cmd.angular.z = self.kp * (target-yaw)
-            if abs(rot_cmd.angular.z) < 0.1:
+            rot_cmd.angular.z = 0.5 * (target-yaw)
+            if abs(target-yaw) < 1.0:
                 self.stop()
+                rospy.loginfo('agent {} finished rotating.'.format(self.id))
                 break
-            self.velocity_publisher(rot_cmd)
+            self.velocity_publisher.publish(rot_cmd)
+            rospy.loginfo('agent {} is rotating.'.format(self.id))
             rospy.Rate(10).sleep()
 
     def step(self):
@@ -564,11 +566,12 @@ class Robot:
         if self.reverse:
             if not self.rotated:
                 # rotate
-                target = math.pi / 2
+                target = math.pi
                 self.rotate(target)
                 self.rotated = True
 
             delta = self.distance_from_wall - self.left_wall_dist  # distance error
+            delta = -delta 
         else:
             delta = self.distance_from_wall - self.right_wall_dist  # distance error
         self.dist_from_start = distance_compute(self.start_pos, self.robot_location)
@@ -580,7 +583,7 @@ class Robot:
             self.bird_left_nest = False
          
 
-        # PID controller
+        # PID controller (PD actually)
         PID_output = self.kp * delta + self.kd * (delta - self.prev_error)
 
         # stored states
@@ -588,17 +591,21 @@ class Robot:
 
         # clip PID output
         angular_zvel = np.clip(PID_output, -1.2, 1.2)
-        linear_vel = np.clip((self.front_wall_dist - 0.35), -0.1, 0.4)
+        linear_vel = np.clip((self.front_wall_dist - 0.35), -0.2, 0.4)
 
 
         # log IOs
+        # if self.id:#TODO
         log = '\n agent {} distance from right wall in cm ={} / {}\n'.format(self.id, int(self.right_wall_dist * 100), self.distance_from_wall * 100)
+        log += ' agent {} distance from left wall in cm ={} / {}\n'.format(self.id, int(self.left_wall_dist * 100), self.distance_from_wall * 100)
         log += ' agent {} distance from front wall in cm ={}\n'.format(self.id, int(self.front_wall_dist * 100))
         log += ' agent {} distance from nest ={}\n'.format(self.id, self.dist_from_start)
         log += ' agent {} linear_vel={} angular_vel={} \n'.format(self.id, linear_vel, angular_zvel)
         log += ' current dist from walls threshold={} \n'.format(self.distance_from_wall)
         log += ' detected spheres={} \n'.format(len(spheres_centers))
         rospy.loginfo(log)
+
+        rospy.loginfo(' agent {} PID={}, delta={}'.format(self.id, PID_output, delta))
 
         # publish cmd_vel
         vel_msg = Twist(Vector3(linear_vel, 0, 0), Vector3(0, 0, angular_zvel))
@@ -643,17 +650,6 @@ def inspection():
     bird_left_nest = False
 
     try:
-        # while agent_0.distance_from_wall < 1.5 or agent_1.distance_from_wall < 1.5:
-        #     current_ts = datetime.now()
-        #     if current_ts - start_ts > TIMEOUT:
-        #         break
-
-        #     agent_0.step()
-        #     agent_1.step()
-        #     rate.sleep()
-
-        # agent_0.stop()
-        # agent_1.stop()
         
         agent_t0 = Thread(target=thread_step, args=(agent_0,))
         agent_t1 = Thread(target=thread_step, args=(agent_1,))
