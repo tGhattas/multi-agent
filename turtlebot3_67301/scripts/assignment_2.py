@@ -524,7 +524,7 @@ class Robot:
 
         # circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30, minRadius=10, maxRadius=40)
         # circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30)#, minRadius=10, maxRadius=25)
-        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=20, minRadius=10, maxRadius=40)
+        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=30, minRadius=15, maxRadius=20)
 
         if circles is not None:
             circles = np.round(circles[0, :]).astype("int")
