@@ -78,7 +78,7 @@ def callback_odom(msg):
 
 #############################  aux
 
-def not_identical_to_other_center(x, y, radius=40):
+def not_identical_to_other_center(x, y, radius=60):
     global spheres_centers
     for a, b in spheres_centers:
         if math.sqrt((a-x)**2 + (b-y)**2) < radius:
@@ -522,9 +522,17 @@ class Robot:
         smooth = cv2.GaussianBlur(grey, (9,9), 1.5**2)
         cv2.imwrite(GENERIC_PATH("gaussian_{}.jpg".format(self.id)), smooth)
 
-        # circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30, minRadius=10, maxRadius=40)
-        # circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30)#, minRadius=10, maxRadius=25)
         circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=30, minRadius=5, maxRadius=15)
+
+        edges = cv2.Canny(grey,10,40,apertureSize = 3)
+        minLineLength = 10
+        maxLineGap = 10
+        lines = cv2.HoughLinesP(edges,1,np.pi/180,100,minLineLength,maxLineGap)
+        if lines:
+            import pdb;pdb.set_trace()
+            print(lines,'-'*1000)
+            for x1,y1,x2,y2 in lines[0]:
+                cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 5)
 
         if circles is not None:
             circles = np.round(circles[0, :]).astype("int")
@@ -533,10 +541,10 @@ class Robot:
                 cv2.circle(img, (x, y), r, (0, 255, 0), 2)
                 cv2.circle(img, (x, y), 1, (0, 0, 255), 1)
                 # check if there is walls inside the circle
-                r_ = int(0.5*r)
-                rect_inside = img[max(y-r_, 0):min(y+r_, img.shape[0]), max(x-r_, 0):min(x+r_, img.shape[1])]
+                # r_ = int(0.5*r)
+                # rect_inside = img[max(y-r_, 0):min(y+r_, img.shape[0]), max(x-r_, 0):min(x+r_, img.shape[1])]
 
-                center_local_position = np.array((x, y)) * 0.05 +  local_position
+                center_local_position = np.array((x, y)) * 0.05 + local_position
                 global_local_points_index = (center_local_position - global_map_origin) / 0.05
                 global_to_local_x = int(global_local_points_index[0])
                 global_to_local_y = int(global_local_points_index[1])
@@ -679,7 +687,12 @@ def inspection():
 
         for s in spheres_centers:
             sphere_loc = to_map_img_point(*s)
-            cv2.circle(map_img, sphere_loc, 3, (255, 0, 0), thickness=-1) # mark robot in Blue
+
+            cv2.circle(map_img, s, 3, (0, 255, 0), thickness=-1) # mark robot in Blue
+            cv2.circle(map_img, (s[1],s[0]), 3, (0, 255, 0), thickness=-1) # mark robot in Blue
+            cv2.circle(map_img, sphere_loc, 3, (0, 255, 0), thickness=-1) # mark robot in Blue
+            cv2.circle(map_img, (sphere_loc[1], sphere_loc[0]), 3, (0, 255, 0), thickness=-1) # mark robot in Blue
+
             dists[s] = {tuple(s_): distance_compute(s_,s) for s_ in spheres_centers}
 
         cv2.imwrite(GENERIC_PATH("spheres_locs.jpg"), map_img)
