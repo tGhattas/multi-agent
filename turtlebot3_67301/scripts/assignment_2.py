@@ -524,15 +524,16 @@ class Robot:
 
         circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=30, minRadius=5, maxRadius=15)
 
-        edges = cv2.Canny(grey,10,40,apertureSize = 3)
+        edges = cv2.Canny(grey, 10, 40, apertureSize=3)
         minLineLength = 10
         maxLineGap = 10
-        lines = cv2.HoughLinesP(edges,1,np.pi/180,100,minLineLength,maxLineGap)
-        if lines:
-            import pdb;pdb.set_trace()
-            print(lines,'-'*1000)
-            for x1,y1,x2,y2 in lines[0]:
-                cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 5)
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180, 50, minLineLength, maxLineGap)
+        if lines is not None:
+            # import pdb;pdb.set_trace()
+            # print(lines,'-'*1000)
+            for i in range(len(lines)):
+                for x1,y1,x2,y2 in lines[i]:
+                    cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 5)
 
         if circles is not None:
             circles = np.round(circles[0, :]).astype("int")
@@ -550,7 +551,7 @@ class Robot:
                 global_to_local_y = int(global_local_points_index[1])
 
                 with spheres_centers_list_lock:
-                    if not_identical_to_other_center(global_to_local_x, global_to_local_y):
+                    if not_identical_to_other_center(global_to_local_x, global_to_local_y, radius=70):
                         log = '\n'+'-'*10
                         log += '\n'+str(spheres_centers)
                         log += '\n'+str((global_to_local_x, global_to_local_y))
@@ -688,10 +689,10 @@ def inspection():
         for s in spheres_centers:
             sphere_loc = to_map_img_point(*s)
 
-            cv2.circle(map_img, s, 3, (0, 255, 0), thickness=-1) # mark robot in Blue
+            # cv2.circle(map_img, s, 3, (0, 255, 0), thickness=-1) # mark robot in Blue
             cv2.circle(map_img, (s[1],s[0]), 3, (0, 255, 0), thickness=-1) # mark robot in Blue
-            cv2.circle(map_img, sphere_loc, 3, (0, 255, 0), thickness=-1) # mark robot in Blue
-            cv2.circle(map_img, (sphere_loc[1], sphere_loc[0]), 3, (0, 255, 0), thickness=-1) # mark robot in Blue
+            # cv2.circle(map_img, sphere_loc, 3, (0, 255, 0), thickness=-1) # mark robot in Blue
+            # cv2.circle(map_img, (sphere_loc[1], sphere_loc[0]), 3, (0, 255, 0), thickness=-1) # mark robot in Blue
 
             dists[s] = {tuple(s_): distance_compute(s_,s) for s_ in spheres_centers}
 
