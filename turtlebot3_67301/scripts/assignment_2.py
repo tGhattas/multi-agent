@@ -522,16 +522,13 @@ class Robot:
         smooth = cv2.GaussianBlur(grey, (9,9), 1.5**2)
         cv2.imwrite(GENERIC_PATH("gaussian_{}.jpg".format(self.id)), smooth)
 
-        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=30, minRadius=5, maxRadius=15)
+        min_radius = 5
+        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=30, minRadius=min_radius, maxRadius=15)
 
         edges = cv2.Canny(grey, 10, 40, apertureSize=3)
         minLineLength = 10
         maxLineGap = 10
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, 50, minLineLength, maxLineGap)
-        if lines is not None:
-            for i in range(len(lines)):
-                for x1,y1,x2,y2 in lines[i]:
-                    cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 2)
 
         if circles is not None:
             circles = np.round(circles[0, :]).astype("int")
@@ -546,15 +543,27 @@ class Robot:
                 global_to_local_y = int(global_local_points_index[1])
 
                 with spheres_centers_list_lock:
-                    if not_identical_to_other_center(global_to_local_x, global_to_local_y, radius=70):
+                    new = not_identical_to_other_center(global_to_local_x, global_to_local_y, radius=70)
+                    if new:
+                        if lines is not None:
+                            for i in range(len(lines)):
+                                for x1,y1,x2,y2 in lines[i]:
+                                    # calculate distance between sphere center and line
+                                    d = np.linalg.norm(np.cross((x2,y2)-(x1,y1), (x1,y1)-(x, y))) / np.linalg.norm((x2,y2)-(x1,y1))
+                                    if d < min_radius:
+                                        cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 2)
+                                        new = False
+                                        break
+
+                    if new:
                         log = '\n'+'-'*10
                         log += '\n'+str(spheres_centers)
                         log += '\n'+str((global_to_local_x, global_to_local_y))
                         log += '\n'+'-'*10
                         rospy.loginfo(log)
                         spheres_centers.append((global_to_local_x, global_to_local_y))
-
-                cv2.imwrite(LOCAL_SPHERES_IMG_PATH(len(spheres_centers)), img)
+                if new:
+                    cv2.imwrite(LOCAL_SPHERES_IMG_PATH("id{}_{}".format(self.id, len(spheres_centers))), img)
     
     def rotate(self, target):
         while not rospy.is_shutdown():
@@ -682,7 +691,6 @@ def inspection():
         map_img = map_to_img(global_map, save=False)
         map_img = cv2.cvtColor(map_img, cv2.COLOR_GRAY2BGR)
         for s in spheres_centers:
-
             cv2.circle(map_img, (s[1],s[0]), 3, (0, 255, 0), thickness=-1) # mark robot in Blue
             dists[s] = {tuple(s_): distance_compute(s_,s) for s_ in spheres_centers}
 
