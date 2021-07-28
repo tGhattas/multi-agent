@@ -529,11 +529,9 @@ class Robot:
         maxLineGap = 10
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, 50, minLineLength, maxLineGap)
         if lines is not None:
-            # import pdb;pdb.set_trace()
-            # print(lines,'-'*1000)
             for i in range(len(lines)):
                 for x1,y1,x2,y2 in lines[i]:
-                    cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 5)
+                    cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 2)
 
         if circles is not None:
             circles = np.round(circles[0, :]).astype("int")
@@ -541,9 +539,6 @@ class Robot:
             for (x, y, r) in circles:
                 cv2.circle(img, (x, y), r, (0, 255, 0), 2)
                 cv2.circle(img, (x, y), 1, (0, 0, 255), 1)
-                # check if there is walls inside the circle
-                # r_ = int(0.5*r)
-                # rect_inside = img[max(y-r_, 0):min(y+r_, img.shape[0]), max(x-r_, 0):min(x+r_, img.shape[1])]
 
                 center_local_position = np.array((x, y)) * 0.05 + local_position
                 global_local_points_index = (center_local_position - global_map_origin) / 0.05
@@ -685,15 +680,10 @@ def inspection():
         dists = {}
         
         map_img = map_to_img(global_map, save=False)
-
+        map_img = cv2.cvtColor(map_img, cv2.COLOR_GRAY2BGR)
         for s in spheres_centers:
-            sphere_loc = to_map_img_point(*s)
 
-            # cv2.circle(map_img, s, 3, (0, 255, 0), thickness=-1) # mark robot in Blue
             cv2.circle(map_img, (s[1],s[0]), 3, (0, 255, 0), thickness=-1) # mark robot in Blue
-            # cv2.circle(map_img, sphere_loc, 3, (0, 255, 0), thickness=-1) # mark robot in Blue
-            # cv2.circle(map_img, (sphere_loc[1], sphere_loc[0]), 3, (0, 255, 0), thickness=-1) # mark robot in Blue
-
             dists[s] = {tuple(s_): distance_compute(s_,s) for s_ in spheres_centers}
 
         cv2.imwrite(GENERIC_PATH("spheres_locs.jpg"), map_img)
