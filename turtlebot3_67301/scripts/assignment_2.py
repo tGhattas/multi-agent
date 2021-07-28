@@ -44,6 +44,7 @@ CONT_IMG_PATH = os.path.join(media_dir_path, "contour_img.jpg")
 EDT_IMG_PATH = os.path.join(media_dir_path, "edt_img.jpg")
 EDT_ANOT_IMG_PATH = lambda level: os.path.join(media_dir_path, "edt_img_circs_{}.jpg".format(level))
 LOCAL_SPHERES_IMG_PATH = lambda sphere_ind: os.path.join(media_dir_path, "sphere_img_{}.jpg".format(sphere_ind))
+GENERIC_PATH = lambda path_: os.path.join(media_dir_path, path_)
 
 robot_location = robot_rotation = robot_orientation = None
 global_map = None
@@ -505,7 +506,8 @@ class Robot:
             self.start_pos = self.robot_location
 
     def local_mapper(self):
-        global global_map_origin, global_map, global_map_info, LOCAL_MAP_IMG_PATH, spheres_centers, LOCAL_SPHERES_IMG_PATH, spheres_centers_list_lock
+        global global_map_origin, global_map, global_map_info, LOCAL_MAP_IMG_PATH, spheres_centers
+        global LOCAL_SPHERES_IMG_PATH, spheres_centers_list_lock, GENERIC_PATH
         local_map = rospy.wait_for_message('/tb3_{}/move_base/local_costmap/costmap'.format(self.id), OccupancyGrid)
         local_points = np.transpose(np.array(local_map.data).reshape(
                                     (local_map.info.width, local_map.info.height)))
@@ -517,9 +519,13 @@ class Robot:
         img = cv2.imread(LOCAL_MAP_IMG_PATH(self.id), cv2.IMREAD_COLOR)
         grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         kernel = np.ones((5, 5), np.uint8)
-        smooth = cv2.GaussianBlur(grey, (5,5), 1.5**2)
+        smooth = cv2.GaussianBlur(grey, (9,9), 1.5**2)
+        cv2.imwrite(GENERIC_PATH("gaussian_{}.jpg".format(self.id)), smooth)
 
-        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30, minRadius=10, maxRadius=20)
+        # circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30, minRadius=10, maxRadius=40)
+        # circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30)#, minRadius=10, maxRadius=25)
+        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=20, minRadius=10, maxRadius=40)
+
         if circles is not None:
             circles = np.round(circles[0, :]).astype("int")
 
@@ -590,8 +596,8 @@ class Robot:
         self.prev_error = delta
 
         # clip PID output
-        angular_zvel = np.clip(PID_output, -1.2, 1.2)
-        linear_vel = np.clip((self.front_wall_dist - 0.35), -0.2, 0.4)
+        angular_zvel = np.clip(PID_output, -1.3, 1.3)
+        linear_vel = np.clip((self.front_wall_dist - 0.35), -0.2, 0.3)
 
 
         # log IOs
@@ -661,7 +667,12 @@ def inspection():
         agent_t1.join()
 
     finally:
-        rospy.loginfo("{} spheres were found.".format(len(spheres_centers)))
+        print("{} spheres were found.".format(len(spheres_centers)))
+        print("spheres locations {}".format(spheres_centers))
+        dists = {}
+        for s in spheres_centers:
+            dists[s] = {tuple(s_): distance_compute(s_,s) for s_ in spheres_centers}
+        print(dists)
         return len(spheres_centers)
 
 
@@ -676,7 +687,8 @@ if __name__ == '__main__':
     print('exec_mode:' + exec_mode)        
 
     agent_id = int(sys.argv[2]) if len(sys.argv) >= 3 else 0
-    print('agent id: %d' % agent_id)        
+    if len(sys.argv) >= 3:
+        print('agent id: %d' % agent_id)        
     if exec_mode == 'cleaning':        
         vacuum_cleaning(agent_id)
     elif exec_mode == 'inspection':
