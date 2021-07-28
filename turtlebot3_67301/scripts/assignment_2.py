@@ -530,12 +530,12 @@ class Robot:
             circles = np.round(circles[0, :]).astype("int")
 
             for (x, y, r) in circles:
-                cv2.circle(img, (x, y), r, (0, 255, 0), 4)
-                cv2.circle(img, (x, y), 1, (0, 0, 255), 3)
+                cv2.circle(img, (x, y), r, (0, 255, 0), 2)
+                cv2.circle(img, (x, y), 1, (0, 0, 255), 1)
                 # check if there is walls inside the circle
                 r_ = int(0.5*r)
                 rect_inside = img[max(y-r_, 0):min(y+r_, img.shape[0]), max(x-r_, 0):min(x+r_, img.shape[1])]
-                
+
                 center_local_position = np.array((x, y)) * 0.05 +  local_position
                 global_local_points_index = (center_local_position - global_map_origin) / 0.05
                 global_to_local_x = int(global_local_points_index[0])
@@ -641,7 +641,7 @@ def thread_step(agent, start_ts=datetime.now()):
         
 
 def inspection():
-    global global_map_origin, global_map_info, global_map
+    global global_map_origin, global_map_info, global_map, GENERIC_PATH
     rospy.init_node('wall_following_control')
     rospy.loginfo('start inspection')
     
@@ -674,8 +674,15 @@ def inspection():
         print("{} spheres were found.".format(len(spheres_centers)))
         print("spheres locations {}".format(spheres_centers))
         dists = {}
+        
+        map_img = map_to_img(global_map, save=False)
+
         for s in spheres_centers:
+            sphere_loc = to_map_img_point(*s)
+            cv2.circle(map_img, sphere_loc, 3, (255, 0, 0), thickness=-1) # mark robot in Blue
             dists[s] = {tuple(s_): distance_compute(s_,s) for s_ in spheres_centers}
+
+        cv2.imwrite(GENERIC_PATH("spheres_locs.jpg"), map_img)
         print(dists)
         return len(spheres_centers)
 
