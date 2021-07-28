@@ -524,7 +524,7 @@ class Robot:
 
         # circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30, minRadius=10, maxRadius=40)
         # circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30)#, minRadius=10, maxRadius=25)
-        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=30, minRadius=15, maxRadius=20)
+        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=30, minRadius=5, maxRadius=15)
 
         if circles is not None:
             circles = np.round(circles[0, :]).astype("int")
@@ -532,6 +532,10 @@ class Robot:
             for (x, y, r) in circles:
                 cv2.circle(img, (x, y), r, (0, 255, 0), 4)
                 cv2.circle(img, (x, y), 1, (0, 0, 255), 3)
+                # check if there is walls inside the circle
+                r_ = int(0.5*r)
+                rect_inside = img[max(y-r_, 0):min(y+r_, img.shape[0]), max(x-r_, 0):min(x+r_, img.shape[1])]
+                
                 center_local_position = np.array((x, y)) * 0.05 +  local_position
                 global_local_points_index = (center_local_position - global_map_origin) / 0.05
                 global_to_local_x = int(global_local_points_index[0])
