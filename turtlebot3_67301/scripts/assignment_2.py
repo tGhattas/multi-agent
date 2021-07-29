@@ -381,7 +381,7 @@ def competitive_cleaning(agent_id=0, path_based_dist=True):
             rival_sorted_dirts = sort_dirts(dirt_eta_map, agent_id=1-agent_id, annotate=False, by_path=True)
 
         agent_1_stronger = sum(closer_dirts_ind) > len(pub_dirt_list) // 2
-        # im_weak = True if agent_id == 0 and agent_1_stronger else False
+
         his = mine = []
         for ag_id, dirt_pos in zip(closer_dirts_ind, pub_dirt_list):
             if ag_id != agent_id:
@@ -428,7 +428,7 @@ def vacuum_cleaning(agent_id):
         time.sleep(0.1)
     dirt_list_cpy = [_ for _ in pub_dirt_list]
     try:
-        if agent_id: #.  TODO.  *********************************** $$$$$$$$$$$$$$$
+        if agent_id==0: #.  TODO.  *********************************** $$$$$$$$$$$$$$$
             basic_cleaning(pub_dirt_list, agent_id)
         else:
             competitive_cleaning(agent_id)
@@ -482,10 +482,6 @@ class Robot:
         self.kp = 4
         self.kd = 450
         self.ki = 0
-
-        # self.k1 = self.kp + self.ki + self.kd
-        # self.k2 = -self.kp - 2 * self.kd
-        # self.k3 = self.kp
 
         subcribe_location(agent_id, self.callback_odom)
         subcribe_laser(agent_id, self.callback_laser)

@@ -100,7 +100,7 @@ We implemented our approach using image processing manipulations on the binary i
 
 \begin{frame}{Single-agent dirt collection}
 \bigskip 
-We evaluated our approach by  TODO!!!
+We evaluated the approach by visualizing path the robot takes #TODO!!!
 \end{frame}
 
 
@@ -131,7 +131,7 @@ We evaluated our approach by  TODO!!!
     PD formulation:
 
 \begin{align*} 
-&\omega(t)=K_{P} e(t)+K_{P} \frac{d e}{d t}\ \ s.t\\
+&\omega(t)=K_{P} e(t)+K_{P} \frac{d e}{d t}\ \ \ \ s.t\\
 &\omega(t)\text{ - PD output }\\
 &K_{P}\text{ - proportional gain }\\
 &de\text{ - change in error value }\\
@@ -191,6 +191,7 @@ We model the problem as two decision Trees, one for each agent, $T_{Agent_{i}} =
 \item Each edge $E_{Agent_{i}}=(v_{1},v_{2})$ cost is the Move-Base path length between $v_{1}$ and $v_{2}$.
 \item The utility of an agent is defined for path $p\in E^{\# dirts}$ as
 \item $$u(p) = \sum_{e \in p} cost(e) $$
+\item A path $p^{*}$ is optimal if $$u(p^{*}) = max_{\forall p}{u(p)} $$
 \end{itemize}
 \end{frame}
 
@@ -207,8 +208,51 @@ We implemented the approach by:
 \end{itemize}
 \end{frame}
 
+\section{Multi-agent inspection}
+\begin{frame}{Multi-agent inspection}
+\begin{itemize}
+    \item {\bf Problem description:} explore a room and count the number of statically positioned spheres using two agents subject to a time limit. 
+    \item That can be translated to: cover all the accessible areas using the agent sensors range and register the spheres positions within the given time frame.
+    \item The problem is hard because, like with the single agent,  exploring is a hard problem and detecting sphere using a low quality 2d bird view of the sensors reading is challenging but what complicates it even more is managing the two agents.
+    \item An exhaustive approach to the solution would be using both agents to perform BFS/DFS algorithm to map the room including the existing static objects like the spheres and cross validate correctness.
+\end{itemize}
+\end{frame}
 
-\section{Multi-agent dirt inspection}
+\begin{frame}{Multi-agent inspection}
+    Same as with single agent: We model the problem as a walk-by-wall using PD controller to keep a distance from the wall and gradually increase this reserved distance after each full circle and registering the spheres positioned along the way.
+    
+    PD formulation:
+
+\begin{align*} 
+&\omega(t)=K_{P} e(t)+K_{P} \frac{d e}{d t}\ \ \ \ s.t\\
+&\omega(t)\text{ - PD output }\\
+&K_{P}\text{ - proportional gain }\\
+&de\text{ - change in error value }\\
+&dt\text{ - change in time } 
+\end{align*}    
+
+\end{frame}
+
+\begin{frame}{Single-agent inspection}
+We implemented our approach using PD output for movement and the local cost map  for spheres count. For every relevant sensor reading:
+\graphicspath{{images/}}
+\begin{itemize}
+    \item Adjust linear velocity according to distance from front wall.
+    \item Adjust angular velocity according PD output.
+    \item Process local cost map image and detect circles using Hough transform.
+    \item For each detected circle center, register centers in a set to prevent counting twice.
+    \bigskip
+    
+    \begin{figure}[htp]
+    % \centering
+    \includegraphics[height=3cm,width=3cm]{gazibo.JPG}
+    \includegraphics[height=3cm,width=3cm]{sphere_img_0 (4).jpg}
+    \includegraphics[height=3cm,width=3cm]{sphere_img_1 (2).jpg}
+
+    \label{fig:galaxy}
+\end{figure}
+\end{itemize}
+\end{frame}
 
 \section{Conclusion}
 
