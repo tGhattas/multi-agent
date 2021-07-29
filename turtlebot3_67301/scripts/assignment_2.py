@@ -367,32 +367,43 @@ def update_dirt_list():
 
 def rotate(target, agent_id=0):
     rate = rospy.Rate(10)
+    velocity_publisher = get_vel_publisher(agent_id)
     while not rospy.is_shutdown():
         global robot_rotation
         while robot_rotation is None:
             rospy.loginfo('agent waiting for rotation.')
             time.sleep(0.1)
-        yaw = self.robot_rotation[-1]
+        yaw = robot_rotation[-1]
         rot_cmd = Twist()
         rot_cmd.angular.z = 0.5 * (target-yaw)
         if abs(target-yaw) < 1.0:
-            self.stop()
+            velocity_publisher.publish(Twist(Vector3(0, 0, 0), Vector3(0, 0, 0))) # stop signal
             rospy.loginfo('agent {} finished rotating.'.format(self.id))
             break
-        velocity_publisher = get_vel_publisher(agent_id)
         velocity_publisher.publish(rot_cmd)
-        rospy.loginfo('agent {} is rotating.'.format(self.id))
+        rospy.loginfo('agent {} is rotating.'.format(agent_id))
         rate.sleep()
 
 def competitive_cleaning(agent_id=0, path_based_dist=True):
-    global pub_dirt_list
+    global pub_dirt_list, robot_location
     rospy.loginfo('agent {} started COMPETITIVE cleaning'.format(agent_id))
     rate = rospy.Rate(10)
     update_dirt_list()
 
-
+    prev_loc = [_ for _ in robot_location]
+    timestamp = datetime.now()
+    
 
     while len(pub_dirt_list):
+        # try to unstuck by rotating
+        elapsed_time = datetime.now() - timestamp
+        if distance_compute(prev_loc, robot_location) < 0.5 and elapsed_time > timedelta(seconds=30):
+            rospy.loginfo("try to unstuck agent {}...".format(agent_id))
+            rotate(math.pi/2, agent_id)
+        else:
+            prev_loc = [_ for _ in robot_location]
+            timestamp = datetime.now()
+
         if not path_based_dist:
             sorted_dirts = sort_dirts(pub_dirt_list, agent_id=agent_id)
             rival_sorted_dirts = sort_dirts(pub_dirt_list, agent_id=1-agent_id, annotate=False)
