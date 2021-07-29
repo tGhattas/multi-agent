@@ -368,6 +368,7 @@ def update_dirt_list():
 def competitive_cleaning(agent_id=0, path_based_dist=True):
     global pub_dirt_list
     rospy.loginfo('agent {} started COMPETITIVE cleaning'.format(agent_id))
+    rate = rospy.Rate(10)
     update_dirt_list()
     while len(pub_dirt_list):
         if not path_based_dist:
@@ -389,16 +390,17 @@ def competitive_cleaning(agent_id=0, path_based_dist=True):
                 mine.append(dirt_pos)
 
         goals = mine + his # first clean more confident dirts
-        # for g in goals:
-        
-        rival_goal = get_rival_goal(1-agent_id)
-        if rival_goal and distance_compute(g, np.array(rival_goal)) < 0.5 and closer_dirt_map[(g[0], g[1])] != agent_id:
-            # skip an impossible goal
-            rospy.loginfo('agent {} skipping impossible goal.'.format(agent_id))
-            continue
-        x, y = g
-        multi_move(x, y, agent_id)
-        update_dirt_list()
+        g = goals.pop(0)
+        if len(goals):
+            rival_goal = get_rival_goal(1-agent_id)
+            if rival_goal and distance_compute(g, np.array(rival_goal)) < 0.5 and closer_dirt_map[(g[0], g[1])] != agent_id:
+                # skip an impossible goal
+                rospy.loginfo('agent {} skipping impossible goal.'.format(agent_id))
+                continue
+            x, y = g
+            multi_move(x, y, agent_id)
+            update_dirt_list()
+        rate.sleep()
         
 
 
