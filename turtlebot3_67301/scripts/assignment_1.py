@@ -39,9 +39,12 @@ CONT_IMG_PATH = os.path.join(media_dir_path, "contour_img.jpg")
 EDT_IMG_PATH = os.path.join(media_dir_path, "edt_img.jpg")
 EDT_ANOT_IMG_PATH = lambda level: os.path.join(media_dir_path, "edt_img_circs_{}.jpg".format(level))
 LOCAL_SPHERES_IMG_PATH = lambda sphere_ind: os.path.join(media_dir_path, "sphere_img_{}.jpg".format(sphere_ind))
+ROBOT_ROUTE_IMG_PATH = os.path.join(media_dir_path, "route_img.jpg")
+
 
 robot_location = robot_rotation = robot_orientation = None
 global_map = None
+route_map = None
 global_map_info = None
 global_map_origin = None
 global_points = []
@@ -90,13 +93,16 @@ def callback_laser(data):
 
 
 
-def callback_odom(msg):
+def callback_odom(msg, anotate=True):
     '''
     Obtains Odometer readings and update global Variables
     '''
-    global robot_location, robot_rotation, robot_orientation, robot_location_pos
+    global robot_location, robot_rotation, robot_orientation, robot_location_pos, route_map
     robot_location_pos = msg.pose.pose
     location = [msg.pose.pose.position.x, msg.pose.pose.position.y]
+    if anotate:
+        robot_loc_on_map = to_map_img_point(*location)
+        cv2.circle(route_map, robot_loc_on_map, 1, (0, 255, 0), thickness=-1)
     robot_location = location
     orientation = [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
     (roll, pitch, yaw) = euler_from_quaternion(orientation)
@@ -305,7 +311,7 @@ def local_mapper():
 
 
 def inspection():
-    global k1, k2, k3, kp, kd, ki, front_wall_dist, x, right_wall_dist, left_wall_dist
+    global k1, k2, k3, kp, kd, ki, front_wall_dist, x, right_wall_dist, left_wall_dist, route_map
     global distance_from_wall, robot_location_pos, global_map_origin, global_map_info, global_map
     print('start inspection')
 
@@ -323,6 +329,8 @@ def inspection():
     start_pos = robot_location
 
     global_map, global_map_info, global_map_origin, grid = get_map()
+    route_map = map_img.copy()
+    route_map = cv2.cvtColor(route_map, cv2.COLOR_GRAY2BGR)
     prev_error = 0
     bird_left_nest = False
 
@@ -370,6 +378,9 @@ def inspection():
         rate.sleep()
 
     velocity_publisher.publish(Twist(Vector3(0, 0, 0), Vector3(0, 0, 0)))
+
+    if route_map is not None:
+            cv2.imwrite(ROBOT_ROUTE_IMG_PATH, route_map)
     
     print('{} spheres were found'.format(len(spheres_centers)))
     return len(spheres_centers)

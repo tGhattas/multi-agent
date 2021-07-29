@@ -67,12 +67,12 @@ def callback_odom(msg, anotate=False):
     '''
     Obtains Odometer readings and update global Variables
     '''
-    global robot_location, robot_rotation, robot_orientation, robot_location_pos, 
+    global robot_location, robot_rotation, robot_orientation, robot_location_pos, route_map
     robot_location_pos = msg.pose.pose
     location = [msg.pose.pose.position.x, msg.pose.pose.position.y]
     if anotate:
         robot_loc_on_map = to_map_img_point(*location)
-
+        cv2.circle(route_map, robot_loc_on_map, 1, (0, 255, 0), thickness=-1)
     robot_location = location
     orientation = [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
     (roll, pitch, yaw) = euler_from_quaternion(orientation)
@@ -184,7 +184,10 @@ def euler_to_quaternion(yaw):
         return (z, w)
 
 def subcribe_location(agent_id=0, callback=callback_odom, anotate=True):
-    rospy.Subscriber('tb3_{}/odom'.format(agent_id), Odometry, callback)
+    if anotate:
+        rospy.Subscriber('tb3_{}/odom'.format(agent_id), Odometry, lambda msg: callback_odom(msg, True))
+    else:
+        rospy.Subscriber('tb3_{}/odom'.format(agent_id), Odometry, callback)
 
 def subcribe_laser(agent_id=0, callback=None):
     rospy.Subscriber('tb3_{}/scan'.format(agent_id), LaserScan, callback)
@@ -336,7 +339,7 @@ def get_rival_goal(rival_id):
         # channel = 'tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id
         # channel = 'tb3_%d/move_base/NavfnROS/plan' % rival_id
         channel = 'tb3_%d/move_base/DWAPlannerROS/global_plan' % rival_id
-        rival_goal_msg = rospy.wait_for_message(channel, Path, 10)
+        rival_goal_msg = rospy.wait_for_message(channel, Path, 5)
         # rival_goal_msg = rospy.wait_for_message(channel, PoseStamped, 5)
         dest = rival_goal_msg.poses[-1]
         rival_goal = (dest.pose.position.x, dest.pose.position.y)
@@ -409,6 +412,7 @@ def vacuum_cleaning(agent_id):
     global_map, global_map_info, global_map_origin, grid = get_map(agent_id)     
     map_img = map_to_img(global_map)
     route_map = map_img.copy()
+    route_map = cv2.cvtColor(route_map, cv2.COLOR_GRAY2BGR)
     walls_img = walls_to_img(global_map)
     contour_img = contour_to_img()
     edt_img = walls_edt_img(walls_img, contour_img)
@@ -422,19 +426,19 @@ def vacuum_cleaning(agent_id):
         time.sleep(0.1)
 
     try:
-
         if agent_id: #TODO
             basic_cleaning(pub_dirt_list, agent_id)
         else:
             competitive_cleaning(agent_id)
         
-
-
-
     except rospy.exceptions.ROSException as e:
         rospy.logerr('------ROSException thrown={}'.format(str(e)))
         rospy.info('agent {} running basic cleaning.'.format(agent_id))
         basic_cleaning(pub_dirt_list, agent_id)
+
+    finally:
+        if route_map is not None:
+            cv2.imwrite(ROBOT_ROUTE_IMG_PATH(agent_id), route_map)
 
 ##############################################################################################################################
 

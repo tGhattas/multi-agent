@@ -159,13 +159,54 @@ We implemented our approach using PD output for movement and the local cost map 
 
     \label{fig:galaxy}
 \end{figure}
-    
 \end{itemize}
+\end{frame}
 
+\begin{frame}{Single-agent inspection}
+\begin{itemize}
+    \item I thought about generating a global map using local cost map registration but that isn't needed for the mere task of counting the spheres.
+    \item The presented approach, did manage to fulfill the task of counting spheres with a miss count of up to 1.
+    \item An improvement to the solution is to break dependency from the wall kept distance.
+\end{itemize}
+\end{frame}
+
+\section{Multi-agent dirt collection}
+\begin{frame}{Multi-agent dirt collection}
+\begin{itemize}
+    \item {\bf Problem description:} compete against another agent in collect as many as possible dirt pieces positioned in known locations to both agents, with the option of listening to to rival plans. 
+    \item That can be translated to: an agent needs to maximize a utility function of the collected dirt pieces number in the existing competitive setting.
+    \item Although one agent can listen to the next step of the other, the problem is challenging because the rival's whole strategy is unknown. Therefore, to gain advantage, the agent strategy has to assume rival level of strength and rationality.
+    \item A safe assumption might be that the rival is rational, and will go in the near optimal path to collect the dirt pieces.
+\end{itemize}
 \end{frame}
 
 
-\section{Multi-agent dirt collection}
+\begin{frame}{Multi-agent dirt collection}
+
+We model the problem as two decision Trees, one for each agent, $T_{Agent_{i}} = (V_{Agent_{i}},E_{Agent_{i}})$ where:
+\begin{itemize}
+\item Every node is a goal, a physical location of a dirt piece.
+\item Each parent node in the tree has all the remaining dirt pieces (goals) as children.
+\item A leaf represents collecting all the published dirt pieces.
+\item Each edge $E_{Agent_{i}}=(v_{1},v_{2})$ cost is the Move-Base path length between $v_{1}$ and $v_{2}$.
+\item The utility of an agent is defined for path $p\in E^{\# dirts}$ as
+\item $$u(p) = \sum_{e \in p} cost(e) $$
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}{Multi-agent dirt collection}
+
+We implemented the approach by:
+\begin{itemize}
+\item Sorting the dirt pieces locations by the length of the Move-Base planned path to goal.
+\item Listen to the rival goal planing.
+\item Move to the goals according to the sorted sequence.
+\item If the agent heading to an impossible to arrive-before-rival goal, skip and go for the next in line.
+
+\end{itemize}
+\end{frame}
+
 
 \section{Multi-agent dirt inspection}
 
