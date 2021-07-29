@@ -365,11 +365,33 @@ def update_dirt_list():
         raise Exception("Dirt list published in a format other than string = " % str(msg))
     
 
+def rotate(target, agent_id=0):
+    rate = rospy.Rate(10)
+    while not rospy.is_shutdown():
+        global robot_rotation
+        while robot_rotation is None:
+            rospy.loginfo('agent waiting for rotation.')
+            time.sleep(0.1)
+        yaw = self.robot_rotation[-1]
+        rot_cmd = Twist()
+        rot_cmd.angular.z = 0.5 * (target-yaw)
+        if abs(target-yaw) < 1.0:
+            self.stop()
+            rospy.loginfo('agent {} finished rotating.'.format(self.id))
+            break
+        velocity_publisher = get_vel_publisher(agent_id)
+        velocity_publisher.publish(rot_cmd)
+        rospy.loginfo('agent {} is rotating.'.format(self.id))
+        rate.sleep()
+
 def competitive_cleaning(agent_id=0, path_based_dist=True):
     global pub_dirt_list
     rospy.loginfo('agent {} started COMPETITIVE cleaning'.format(agent_id))
     rate = rospy.Rate(10)
     update_dirt_list()
+
+
+
     while len(pub_dirt_list):
         if not path_based_dist:
             sorted_dirts = sort_dirts(pub_dirt_list, agent_id=agent_id)
@@ -428,10 +450,10 @@ def vacuum_cleaning(agent_id):
         time.sleep(0.1)
     dirt_list_cpy = [_ for _ in pub_dirt_list]
     try:
-        if agent_id==0: #.  TODO.  *********************************** $$$$$$$$$$$$$$$
-            basic_cleaning(pub_dirt_list, agent_id)
-        else:
-            competitive_cleaning(agent_id)
+        # if agent_id==0:
+        #     basic_cleaning(pub_dirt_list, agent_id)
+        # else:
+        competitive_cleaning(agent_id)
         
     except rospy.exceptions.ROSException as e:
         rospy.logerr('------ROSException thrown={}'.format(str(e)))
