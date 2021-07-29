@@ -424,9 +424,9 @@ def vacuum_cleaning(agent_id):
     while len(pub_dirt_list) == 0:
         update_dirt_list()
         time.sleep(0.1)
-
+    dirt_list_cpy = [_ for _ in pub_dirt_list]
     try:
-        if agent_id: #TODO
+        if agent_id: #.  TODO.  *********************************** $$$$$$$$$$$$$$$
             basic_cleaning(pub_dirt_list, agent_id)
         else:
             competitive_cleaning(agent_id)
@@ -438,6 +438,10 @@ def vacuum_cleaning(agent_id):
 
     finally:
         if route_map is not None:
+            if len(dirt_list_cpy):
+                for dirt_pos in dirt_list_cpy:
+                    dirt_loc_on_map = to_map_img_point(*dirt_pos)
+                    cv2.circle(route_map, dirt_loc_on_map, 2, (0, 0, 255), thickness=-1)
             cv2.imwrite(ROBOT_ROUTE_IMG_PATH(agent_id), route_map)
 
 ##############################################################################################################################

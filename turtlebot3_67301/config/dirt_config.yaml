@@ -4,4 +4,5 @@ pieces:
 - !!python/tuple [0.12, -3.0]
 - !!python/tuple [-2.25, -3.19]
 - !!python/tuple [3.262, -3.417]
+- !!python/tuple [-2.884, -1.966]
 radius: 1.0
