@@ -523,7 +523,7 @@ class Robot:
         cv2.imwrite(GENERIC_PATH("gaussian_{}.jpg".format(self.id)), smooth)
 
         min_radius = 5
-        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=30, minRadius=min_radius, maxRadius=15)
+        circles = cv2.HoughCircles(smooth, cv2.HOUGH_GRADIENT, 1.5, 20, param1=40, param2=35, minRadius=min_radius, maxRadius=15)
 
         edges = cv2.Canny(grey, 10, 40, apertureSize=3)
         minLineLength = 10
@@ -544,16 +544,15 @@ class Robot:
 
                 with spheres_centers_list_lock:
                     new = not_identical_to_other_center(global_to_local_x, global_to_local_y, radius=70)
-                    if new:
-                        if lines is not None:
-                            for i in range(len(lines)):
-                                for x1,y1,x2,y2 in lines[i]:
-                                    # calculate distance between sphere center and line
-                                    d = np.linalg.norm(np.cross((x2,y2)-(x1,y1), (x1,y1)-(x, y))) / np.linalg.norm((x2,y2)-(x1,y1))
-                                    if d < min_radius:
-                                        cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 2)
-                                        new = False
-                                        break
+                    if new and lines is not None:
+                        for i in range(len(lines)):
+                            for x1,y1,x2,y2 in lines[i]:
+                                # calculate distance between sphere center and line
+                                d = np.linalg.norm(np.cross((x2,y2)-(x1,y1), (x1,y1)-(x, y))) / np.linalg.norm((x2,y2)-(x1,y1))
+                                if d < min_radius:
+                                    cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 2)
+                                    new = False
+                                    break
 
                     if new:
                         log = '\n'+'-'*10
