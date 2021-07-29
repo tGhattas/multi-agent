@@ -195,7 +195,6 @@ def subcribe_laser(agent_id=0, callback=None):
 def get_vel_publisher(agent_id=0):
     return rospy.Publisher('tb3_{}/cmd_vel'.format(agent_id), Twist, queue_size=10)
 
-
 def to_map_img_point(x, y):
     return int((y-global_map_origin[1])/0.05), int((x-global_map_origin[0])/0.05)
 
@@ -390,15 +389,16 @@ def competitive_cleaning(agent_id=0, path_based_dist=True):
                 mine.append(dirt_pos)
 
         goals = mine + his # first clean more confident dirts
-        for g in goals:
-            rival_goal = get_rival_goal(1-agent_id)
-            if rival_goal and distance_compute(g, np.array(rival_goal)) < 0.5 and closer_dirt_map[(g[0], g[1])] != agent_id:
-                # skip an impossible goal
-                rospy.loginfo('agent {} skipping impossible goal.'.format(agent_id))
-                continue
-            x, y = g
-            multi_move(x, y, agent_id)
-            update_dirt_list()
+        # for g in goals:
+        
+        rival_goal = get_rival_goal(1-agent_id)
+        if rival_goal and distance_compute(g, np.array(rival_goal)) < 0.5 and closer_dirt_map[(g[0], g[1])] != agent_id:
+            # skip an impossible goal
+            rospy.loginfo('agent {} skipping impossible goal.'.format(agent_id))
+            continue
+        x, y = g
+        multi_move(x, y, agent_id)
+        update_dirt_list()
         
 
 
