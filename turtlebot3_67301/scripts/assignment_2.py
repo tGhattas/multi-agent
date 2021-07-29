@@ -44,10 +44,13 @@ CONT_IMG_PATH = os.path.join(media_dir_path, "contour_img.jpg")
 EDT_IMG_PATH = os.path.join(media_dir_path, "edt_img.jpg")
 EDT_ANOT_IMG_PATH = lambda level: os.path.join(media_dir_path, "edt_img_circs_{}.jpg".format(level))
 LOCAL_SPHERES_IMG_PATH = lambda sphere_ind: os.path.join(media_dir_path, "sphere_img_{}.jpg".format(sphere_ind))
+ROBOT_ROUTE_IMG_PATH = lambda aid: os.path.join(media_dir_path, "agent_{}_route_img.jpg".format(aid))
 GENERIC_PATH = lambda path_: os.path.join(media_dir_path, path_)
+
 
 robot_location = robot_rotation = robot_orientation = None
 global_map = None
+route_map = None
 global_map_info = None
 global_map_origin = None
 global_points = []
@@ -60,13 +63,16 @@ pub_dirt_list = []
 
 ############################# Callbacks
 
-def callback_odom(msg):
+def callback_odom(msg, anotate=False):
     '''
     Obtains Odometer readings and update global Variables
     '''
-    global robot_location, robot_rotation, robot_orientation, robot_location_pos
+    global robot_location, robot_rotation, robot_orientation, robot_location_pos, 
     robot_location_pos = msg.pose.pose
     location = [msg.pose.pose.position.x, msg.pose.pose.position.y]
+    if anotate:
+        robot_loc_on_map = to_map_img_point(*location)
+
     robot_location = location
     orientation = [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
     (roll, pitch, yaw) = euler_from_quaternion(orientation)
@@ -177,7 +183,7 @@ def euler_to_quaternion(yaw):
         z = np.sin(yaw/2) 
         return (z, w)
 
-def subcribe_location(agent_id=0, callback=callback_odom):
+def subcribe_location(agent_id=0, callback=callback_odom, anotate=True):
     rospy.Subscriber('tb3_{}/odom'.format(agent_id), Odometry, callback)
 
 def subcribe_laser(agent_id=0, callback=None):
@@ -395,13 +401,14 @@ def competitive_cleaning(agent_id=0, path_based_dist=True):
 
 def vacuum_cleaning(agent_id):
     global MAP_IMG_PATH, global_map, global_map_info, global_map_origin, TIMEOUT
-    global rival_id, pub_dirt_list
+    global rival_id, pub_dirt_list, route_map
 
     rospy.init_node('vacuum_cleaning_{}'.format(agent_id))
     rospy.loginfo('agent {} started cleaning'.format(agent_id))
     
     global_map, global_map_info, global_map_origin, grid = get_map(agent_id)     
     map_img = map_to_img(global_map)
+    route_map = map_img.copy()
     walls_img = walls_to_img(global_map)
     contour_img = contour_to_img()
     edt_img = walls_edt_img(walls_img, contour_img)
