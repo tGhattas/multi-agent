@@ -34,14 +34,14 @@ The Hebrew University of Jerusalem School of Computer Science and Engineering
     \item {\bf Problem description:} collect as many as possible dirt pieces from an unknown environment without having the option of sensing the dirt. 
     \item That can be translated to: we need to cover diverse areas in the room in the shortest period of time.
     \item The problem is hard because with the time limitation we often inherit an upper bound for the area coverage.
-    \item An exhaustive approach to the solution would be moving sequentially along every accessible point known from the map in hand competing a perfect coverage.
+    \item An exhaustive approach to the solution would be moving sequentially along every accessible point known from the map in hand completing a perfect coverage.
 \end{itemize}
 \end{frame}
 
 
 \begin{frame}{Single-agent dirt collection}
 
-We model the problem as a graph $G=(V, E)$ where the nodes $V$ represent a pixel in the map and $E$ and edge existing between every adjacent pair of pixels (nodes).
+We model the problem as a graph $G=(V, E)$ where the nodes $V$ represent a pixel in the map and $E$ an edge existing between every adjacent pair of pixels (nodes).
 
 
 \bigskip
@@ -53,12 +53,12 @@ Our suggested solution takes the graph as input and derive goals for the robot a
 
 \begin{frame}{Single-agent dirt collection}
 
-We implemented our approach using image processing manipulations on the binary image of the given map:
+We implemented our approach using image processing manipulations on the given map:
 \graphicspath{{images/}}
 \begin{itemize}
     \item First we generate binary image from the map structure.
     \item Then we perform Euclidean Distance Transform on the image.
-    \item Now, we have range of gray levels that are distributed among pixels as a function their distance of the nearest black pixel, i.e the nearest wall.
+    \item Now, we have range of gray levels that are distributed among pixels as a function of their distance of the nearest black pixel, i.e the nearest wall.
     \bigskip
     
     \begin{figure}[htp]
@@ -78,7 +78,7 @@ We implemented our approach using image processing manipulations on the binary i
 \graphicspath{{images/}}
 \begin{itemize}
     \item By quantizing the EDT image according to grey levels into a selected number of partitions, we get a complete partition of the room.
-    \item Then, we sample from each part a number of points which become then a goals points. The robot movement is done using move-base node.
+    \item Then, we sample from each part, a number of points which are set as goals the robot travel to using move-base node.
     \item Note that by increasing the resolution of the sampling we can guarantee more area coverage.
     \item In the following images, we can see the different parts and the sampled goals it yields (in orange): 
     
@@ -95,12 +95,6 @@ We implemented our approach using image processing manipulations on the binary i
     
 \end{itemize}
 
-\end{frame}
-
-
-\begin{frame}{Single-agent dirt collection}
-\bigskip 
-We evaluated the approach by visualizing path the robot takes #TODO!!!
 \end{frame}
 
 
