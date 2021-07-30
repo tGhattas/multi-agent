@@ -323,7 +323,8 @@ def multi_move(x, y, agent_id=0):
         move_base_clients[agent_id] = client
     move_base_client = move_base_clients[agent_id]
     rospy.loginfo('agent {} heading to {}'.format(agent_id, (x, y)))
-    move(move_base_client, (x, y), 0)
+    angle = math.atan2(y, x)
+    move(move_base_client, (x, y), angle)
 
 def basic_cleaning(dirts_list, agent_id=0):
     rospy.loginfo('agent {} started BASIC cleaning'.format(agent_id))
@@ -378,7 +379,7 @@ def rotate(target, agent_id=0):
         rot_cmd.angular.z = 0.5 * (target-yaw)
         if abs(target-yaw) < 1.0:
             velocity_publisher.publish(Twist(Vector3(0, 0, 0), Vector3(0, 0, 0))) # stop signal
-            rospy.loginfo('agent {} finished rotating.'.format(self.id))
+            rospy.loginfo('agent {} finished rotating.'.format(agent_id))
             break
         velocity_publisher.publish(rot_cmd)
         rospy.loginfo('agent {} is rotating.'.format(agent_id))
