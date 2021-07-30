@@ -197,15 +197,27 @@ We model the problem as two decision Trees, one for each agent, $T_{Agent_{i}} =
 
 
 \begin{frame}{Multi-agent dirt collection}
-
+\graphicspath{{images/}}
 We implemented the approach by:
 \begin{itemize}
 \item Sorting the dirt pieces locations by the length of the Move-Base planned path to goal.
 \item Listen to the rival goal planing.
 \item Move to the goals according to the sorted sequence.
 \item If the agent heading to an impossible to arrive-before-rival goal, skip and go for the next in line.
-
+\bigskip
+\begin{figure}[htp]
+\includegraphics[height=4cm,width=4cm]{agent_0_route_img.jpg}
+\includegraphics[height=4cm,width=4cm]{agent_1_route_img.jpg}
+\label{fig:galaxy}
+\end{figure}
 \end{itemize}
+\end{frame}
+
+\begin{frame}{Multi-agent dirt collection}
+
+\bigskip
+In some runs, a more naive approach as simply sorting dirt pieces according to euclidean distance from initial location and going sequentially, won the more sophisticated agent. 
+That is probably due to the added overhead of computing the goal as it involves the planner which might be slow.
 \end{frame}
 
 \section{Multi-agent inspection}
@@ -233,8 +245,12 @@ We implemented the approach by:
 
 \end{frame}
 
-\begin{frame}{Single-agent inspection}
-We implemented our approach using PD output for movement and the local cost map  for spheres count. For every relevant sensor reading:
+\begin{frame}{Multi-agent inspection}
+We implemented our approach duplicating the logic from single agent i.e using PD output for movement and the local cost map  for spheres count. However, we make the agents go in opposite directions by rotating one of them before movement and rely on the kept distance from the other wall (left vs right), this ensures concurrent exploring by reducing the overlap.
+\end{frame}
+
+\begin{frame}{Multi-agent inspection}
+For every relevant sensor reading in each agent:
 \graphicspath{{images/}}
 \begin{itemize}
     \item Adjust linear velocity according to distance from front wall.
@@ -256,6 +272,14 @@ We implemented our approach using PD output for movement and the local cost map 
 
 \section{Conclusion}
 
+\begin{frame}{Conclusion}
+\begin{itemize}
+    \item Simplicity might come as handy when designing autonomous agents. As having fast reactive controller (e.g. PID) are critical in some tasks.
+    \item When designing solutions in robotics, generalizing solutions is not trivial. It is very task and environment dependant.
+    \item Scaling up solutions to distributed agents might add to the problem if they have limited communications.
+    \item Robots are fun.
 
+\end{itemize}
+\end{frame}
 
 \end{document}
