@@ -409,9 +409,16 @@ def competitive_cleaning(agent_id=0, path_based_dist=True):
             rival_sorted_dirts = sort_dirts(pub_dirt_list, agent_id=1-agent_id, annotate=False)
             closer_dirts_ind, closer_dirt_map = closer_dirts(agent_id)
         else:
-            closer_dirts_ind, closer_dirt_map, dirt_eta_map = dirt_ETAs(agent_id)
-            sorted_dirts = sort_dirts(dirt_eta_map, agent_id=agent_id, by_path=True)
-            rival_sorted_dirts = sort_dirts(dirt_eta_map, agent_id=1-agent_id, annotate=False, by_path=True)
+            try:
+                closer_dirts_ind, closer_dirt_map, dirt_eta_map = dirt_ETAs(agent_id)
+                sorted_dirts = sort_dirts(dirt_eta_map, agent_id=agent_id, by_path=True)
+                rival_sorted_dirts = sort_dirts(dirt_eta_map, agent_id=1-agent_id, annotate=False, by_path=True)
+            except rospy.ServiceException as e:
+                rospy.logerr(e)
+                sorted_dirts = sort_dirts(pub_dirt_list, agent_id=agent_id)
+                rival_sorted_dirts = sort_dirts(pub_dirt_list, agent_id=1-agent_id, annotate=False)
+                closer_dirts_ind, closer_dirt_map = closer_dirts(agent_id)
+
 
         agent_1_stronger = sum(closer_dirts_ind) > len(pub_dirt_list) // 2
 
