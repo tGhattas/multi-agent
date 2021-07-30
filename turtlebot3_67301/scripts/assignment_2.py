@@ -524,7 +524,7 @@ class Robot:
         self.kd = 450
         self.ki = 0
 
-        subcribe_location(agent_id, self.callback_odom)
+        subcribe_location(agent_id, self.callback_odom, anotate=False)
         subcribe_laser(agent_id, self.callback_laser)
         self.velocity_publisher = get_vel_publisher(agent_id)
 
@@ -600,13 +600,16 @@ class Robot:
                     new = not_identical_to_other_center(global_to_local_x, global_to_local_y, radius=70)
                     if new and lines is not None:
                         for i in range(len(lines)):
-                            for x1,y1,x2,y2 in lines[i]:
-                                # calculate distance between sphere center and line
-                                d = np.linalg.norm(np.cross((x2,y2)-(x1,y1), (x1,y1)-(x, y))) / np.linalg.norm((x2,y2)-(x1,y1))
-                                if d < min_radius:
-                                    cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 2)
-                                    new = False
-                                    break
+                            try:
+                                for x1,y1,x2,y2 in lines[i]:
+                                    # calculate distance between sphere center and line
+                                    d = np.linalg.norm(np.cross(np.array([x2,y2])-np.array([x1,y1]), np.array([x1,y1])-np.array([x, y]))) / np.linalg.norm(np.array([x2,y2])-np.array([x1,y1]))
+                                    if d < min_radius:
+                                        cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 2)
+                                        new = False
+                                        break
+                            except Exception as e:
+                                rospy.logerr(e) # no need to raise further
 
                     if new:
                         log = '\n'+'-'*10
@@ -639,6 +642,7 @@ class Robot:
         
         self.local_mapper()
 
+        import pdb;pdb.set_trace
         if self.reverse:
             if not self.rotated:
                 # rotate
@@ -689,6 +693,7 @@ class Robot:
 
     def stop(self):
         self.velocity_publisher.publish(Twist(Vector3(0, 0, 0), Vector3(0, 0, 0)))
+import traceback
 
 def thread_step(agent, start_ts=datetime.now()):
     rate = rospy.Rate(10)  # 20hz
@@ -701,6 +706,7 @@ def thread_step(agent, start_ts=datetime.now()):
             rate.sleep()
     except Exception as e:
         rospy.logerr('agent {} exception raised:{}'.format(agent.id, str(e)))
+        print(traceback.format_exc())
         raise e
     finally:
         agent.stop()
