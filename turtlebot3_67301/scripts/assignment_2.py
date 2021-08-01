@@ -263,7 +263,7 @@ def dirt_ETAs(agent_id):
         plan = get_agent_plan(agent_start, goal, agent_id)
         agent_eta = len(plan.poses)
 
-        plan = get_agent_plan(rival_start, goal, agent_id) #TODO
+        plan = get_agent_plan(rival_start, goal, agent_id)
         rival_eta = len(plan.poses)
         
         closer_agent = agent_id if rival_eta > agent_eta else 1-agent_id 
@@ -642,7 +642,6 @@ class Robot:
         
         self.local_mapper()
 
-        import pdb;pdb.set_trace
         if self.reverse:
             if not self.rotated:
                 # rotate
@@ -675,7 +674,6 @@ class Robot:
 
 
         # log IOs
-        # if self.id:#TODO
         log = '\n agent {} distance from right wall in cm ={} / {}\n'.format(self.id, int(self.right_wall_dist * 100), self.distance_from_wall * 100)
         log += ' agent {} distance from left wall in cm ={} / {}\n'.format(self.id, int(self.left_wall_dist * 100), self.distance_from_wall * 100)
         log += ' agent {} distance from front wall in cm ={}\n'.format(self.id, int(self.front_wall_dist * 100))
