@@ -6,3 +6,6 @@ Solutions in multi-agent/turtlebot3_67301/scripts/assignment_*.py
 
 Presentation:
 https://github.com/tGhattas/multi-agent/blob/main/67301_2021__Final_project_presentation.pdf
+
+The Constructsim rosject link to run:
+https://app.theconstructsim.com/#/l/42081a6b/
